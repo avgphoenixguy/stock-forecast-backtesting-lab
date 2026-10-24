@@ -1,0 +1,33 @@
+# Python environments
+.venv/
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# Secrets and environment files
+.env
+.env.*
+
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Downloaded raw market data
+data/raw/*.csv
+data/raw/*.parquet
+
+# Generated datasets
+data/processed/*
+!data/processed/.gitkeep
+
+# Generated model files
+*.joblib
+*.pkl
+*.pt
+*.pth
+
+# Logs
+*.log
