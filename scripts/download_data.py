@@ -1,4 +1,4 @@
-"""Download and validate daily historical data for a supported stock ticker."""
+"""Download and validate daily historical data for a stock ticker."""
 
 from __future__ import annotations
 
@@ -20,12 +20,15 @@ RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 
 DEFAULT_TICKER = "RELIANCE.NS"
 
-# These are planned research windows, not download limits.
+# These are research windows, not download limits.
 PRIMARY_RESEARCH_START = "2005-01-01"
 SECONDARY_RESEARCH_START = "2015-01-01"
 
-# Used as a warning/coverage indicator, not a download failure condition.
 MIN_OBSERVATIONS_FOR_INITIAL_RESEARCH = 1000
+
+# Allow only deviations consistent with floating-point precision.
+# This is scale-aware and does not alter the downloaded prices.
+FLOAT_TOLERANCE_MULTIPLIER = 8.0
 
 
 def safe_ticker_name(ticker: str) -> str:
@@ -35,7 +38,7 @@ def safe_ticker_name(ticker: str) -> str:
 
 
 def calculate_sha256(path: Path) -> str:
-    """Calculate a SHA-256 hash for the downloaded CSV."""
+    """Calculate the SHA-256 hash for a file."""
     digest = hashlib.sha256()
 
     with path.open("rb") as file:
@@ -46,7 +49,8 @@ def calculate_sha256(path: Path) -> str:
 
 
 def download_history(ticker: str) -> pd.DataFrame:
-    """Request maximum available daily history and validate its structure."""
+    """Download maximum daily history and validate its structure."""
+
     print(f"Ticker: {ticker}")
     print("Requested period: maximum available daily history")
     print("Downloading from Yahoo Finance via yfinance...")
@@ -64,7 +68,8 @@ def download_history(ticker: str) -> pd.DataFrame:
         )
     except Exception as exc:
         raise RuntimeError(
-            f"Download failed for {ticker}: {type(exc).__name__}: {exc}\n"
+            f"Download failed for {ticker}: "
+            f"{type(exc).__name__}: {exc}\n"
             "Check the ticker symbol, internet connection and data-source "
             "availability. No model or research result has been produced."
         ) from exc
@@ -79,6 +84,7 @@ def download_history(ticker: str) -> pd.DataFrame:
 
     # Preserve the exchange-local calendar date when removing the timezone.
     index = pd.DatetimeIndex(data.index)
+
     if index.tz is not None:
         index = index.tz_localize(None)
 
@@ -92,7 +98,9 @@ def download_history(ticker: str) -> pd.DataFrame:
     ]
 
     required = ["date", "open", "high", "low", "close", "volume"]
-    missing_columns = [col for col in required if col not in data.columns]
+    missing_columns = [
+        column for column in required if column not in data.columns
+    ]
 
     if missing_columns:
         raise RuntimeError(
@@ -100,8 +108,7 @@ def download_history(ticker: str) -> pd.DataFrame:
             f"Received columns: {list(data.columns)}"
         )
 
-    # Corporate-action columns may occasionally be absent for a source.
-    # Keep a consistent output schema in that case.
+    # Keep a consistent schema if corporate-action columns are absent.
     for column in ("dividends", "stock_splits"):
         if column not in data.columns:
             data[column] = 0.0
@@ -129,15 +136,21 @@ def download_history(ticker: str) -> pd.DataFrame:
         )
 
     numeric_columns = [
-        "open", "high", "low", "close", "volume",
-        "dividends", "stock_splits",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "dividends",
+        "stock_splits",
     ]
 
     for column in numeric_columns:
         data[column] = pd.to_numeric(data[column], errors="coerce")
 
-    values = data[numeric_columns].to_numpy(dtype=float)
-    if not np.isfinite(values).all():
+    numeric_values = data[numeric_columns].to_numpy(dtype=np.float64)
+
+    if not np.isfinite(numeric_values).all():
         raise RuntimeError(
             "Missing, invalid or infinite numeric values were found."
         )
@@ -151,22 +164,99 @@ def download_history(ticker: str) -> pd.DataFrame:
     if (data["volume"] < 0).any():
         raise RuntimeError("Negative volume was found.")
 
-    inconsistent_ohlc = (
-        (data["high"] < data["low"])
-        | (data["high"] < data[["open", "close"]].max(axis=1))
-        | (data["low"] > data[["open", "close"]].min(axis=1))
+    # ---------------------------------------------------------------
+    # OHLC VALIDATION
+    # ---------------------------------------------------------------
+    # Strict comparisons can incorrectly reject prices when floating-
+    # point arithmetic produces tiny differences, e.g. close is higher
+    # than high by 1e-15.
+    #
+    # Tolerance for each row:
+    #   8 * machine epsilon * max(1, maximum absolute OHLC price)
+    #
+    # This accommodates floating-point-scale discrepancies while
+    # retaining strict validation against meaningful OHLC errors.
+    # No source prices are rounded or changed.
+    # ---------------------------------------------------------------
+
+    open_values = data["open"].to_numpy(dtype=np.float64)
+    high_values = data["high"].to_numpy(dtype=np.float64)
+    low_values = data["low"].to_numpy(dtype=np.float64)
+    close_values = data["close"].to_numpy(dtype=np.float64)
+
+    row_maximum = np.maximum.reduce(
+        [
+            np.abs(open_values),
+            np.abs(high_values),
+            np.abs(low_values),
+            np.abs(close_values),
+        ]
     )
 
-    if inconsistent_ohlc.any():
+    row_scale = np.maximum(1.0, row_maximum)
+
+    row_tolerance = (
+        FLOAT_TOLERANCE_MULTIPLIER
+        * np.finfo(np.float64).eps
+        * row_scale
+    )
+
+    max_open_close = np.maximum(open_values, close_values)
+    min_open_close = np.minimum(open_values, close_values)
+
+    # Original strict rule, retained to identify tiny rounding-only cases.
+    strict_inconsistent = (
+        (high_values < low_values)
+        | (high_values < max_open_close)
+        | (low_values > min_open_close)
+    )
+
+    # Tolerance-aware rule: only violations beyond the row-specific
+    # floating-point tolerance are considered material.
+    material_inconsistent = (
+        (high_values + row_tolerance < low_values)
+        | (high_values + row_tolerance < max_open_close)
+        | (low_values - row_tolerance > min_open_close)
+    )
+
+    rounding_level_rows = (
+        strict_inconsistent & ~material_inconsistent
+    )
+
+    if material_inconsistent.any():
+        bad_positions = np.flatnonzero(material_inconsistent)
         bad_dates = (
-            data.loc[inconsistent_ohlc, "date"]
+            data.loc[material_inconsistent, "date"]
             .dt.strftime("%Y-%m-%d")
             .tolist()
         )
+
+        samples = []
+
+        for position in bad_positions[:10]:
+            samples.append(
+                {
+                    "date": data.loc[position, "date"].strftime("%Y-%m-%d"),
+                    "open": float(open_values[position]),
+                    "high": float(high_values[position]),
+                    "low": float(low_values[position]),
+                    "close": float(close_values[position]),
+                    "allowed_tolerance": float(row_tolerance[position]),
+                }
+            )
+
         raise RuntimeError(
-            "Inconsistent OHLC observations found on: "
-            f"{bad_dates[:10]}"
+            "Material OHLC inconsistencies found beyond floating-point "
+            f"tolerance on: {bad_dates[:10]}\n"
+            f"Sample observations: {samples}"
         )
+
+    # Keep diagnostics for the metadata and terminal summary.
+    data.attrs["ohlc_rounding_level_rows"] = int(
+        rounding_level_rows.sum()
+    )
+    data.attrs["ohlc_max_row_tolerance"] = float(row_tolerance.max())
+    data.attrs["ohlc_tolerance_multiplier"] = FLOAT_TOLERANCE_MULTIPLIER
 
     output_columns = [
         "date",
@@ -179,15 +269,34 @@ def download_history(ticker: str) -> pd.DataFrame:
         "stock_splits",
     ]
 
-    return data[output_columns]
+    return data[output_columns].copy().assign(
+        _temporary_placeholder=lambda frame: np.nan
+    ).drop(columns="_temporary_placeholder").pipe(
+        lambda result: _attach_validation_metadata(
+            result,
+            data.attrs,
+        )
+    )
+
+
+def _attach_validation_metadata(
+    data: pd.DataFrame,
+    validation_attributes: dict,
+) -> pd.DataFrame:
+    """Attach validation diagnostics to the returned DataFrame."""
+    data.attrs.update(validation_attributes)
+    return data
 
 
 def main() -> None:
+    """Run the downloader, validate the data and write metadata."""
+
     parser = argparse.ArgumentParser(
         description=(
             "Download and validate maximum available daily stock history."
         )
     )
+
     parser.add_argument(
         "--ticker",
         default=DEFAULT_TICKER,
@@ -196,9 +305,10 @@ def main() -> None:
             "Example: --ticker TCS.NS"
         ),
     )
-    args = parser.parse_args()
 
+    args = parser.parse_args()
     ticker = args.ticker.strip().upper()
+
     if not ticker:
         parser.error("Ticker symbol cannot be empty.")
 
@@ -214,10 +324,15 @@ def main() -> None:
     last_date = data["date"].iloc[-1]
     row_count = int(len(data))
 
-    # A newer listing may have fewer rows. Save valid available data,
-    # but clearly flag when it may be insufficient for initial research.
     sufficient_observations = (
         row_count >= MIN_OBSERVATIONS_FOR_INITIAL_RESEARCH
+    )
+
+    rounding_level_rows = int(
+        data.attrs.get("ohlc_rounding_level_rows", 0)
+    )
+    max_row_tolerance = float(
+        data.attrs.get("ohlc_max_row_tolerance", 0.0)
     )
 
     data.to_csv(csv_path, index=False, date_format="%Y-%m-%d")
@@ -290,7 +405,13 @@ def main() -> None:
             "numeric_values_finite": True,
             "ohlc_prices_positive": True,
             "volume_non_negative": True,
-            "ohlc_consistent": True,
+            "ohlc_consistent_with_floating_point_tolerance": True,
+            "rounding_level_ohlc_rows": rounding_level_rows,
+            "tolerance_method": (
+                "8 * float64 machine epsilon * "
+                "max(1, maximum absolute OHLC price per row)"
+            ),
+            "maximum_row_tolerance": max_row_tolerance,
             "missing_values_by_column": {
                 column: int(data[column].isna().sum())
                 for column in data.columns
@@ -311,7 +432,11 @@ def main() -> None:
     print(f"Observations: {row_count:,}")
     print(f"First trading date: {first_date_text}")
     print(f"Last trading date: {last_date_text}")
-    print(f"Meets 1,000-observation reference: {sufficient_observations}")
+    print(f"Rounding-level OHLC rows accepted: {rounding_level_rows}")
+    print(f"Maximum row tolerance: {max_row_tolerance:.3e}")
+    print(
+        f"Meets 1,000-observation reference: {sufficient_observations}"
+    )
     print(f"CSV: {csv_path}")
     print(f"Metadata: {metadata_path}")
     print(f"CSV SHA-256: {metadata['csv_sha256']}")
