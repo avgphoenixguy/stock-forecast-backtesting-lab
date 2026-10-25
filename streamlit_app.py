@@ -1101,8 +1101,8 @@ def generate_on_demand_forecast(ticker: str) -> tuple[dict[str, object], pd.Data
             "On-demand research preview. These estimates are not yet part of the "
             "persistent daily tracking ledger. Deep-learning models are only included "
             "in scheduled forecasts where the dedicated forecast runner is configured for them. "
-            "For stocks with 252–755 sessions, simpler baselines may be available while "
-            "ML models report insufficient training history."
+            "Stocks with shorter histories can still receive baseline forecasts; ML models run "
+            "only when at least 500 usable training rows remain after feature construction."
         ),
     }
     snapshot = build_price_history_snapshot(data)
