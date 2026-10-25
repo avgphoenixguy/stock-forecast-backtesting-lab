@@ -1,6 +1,14 @@
 name: Daily OHLC refresh and forecast
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/daily-forecast.yml"
+      - "scripts/download_data.py"
+      - "scripts/run_daily_forecast.py"
+      - "requirements.txt"
+      - "requirements-forecast.txt"
   schedule:
     # 20:00 India Standard Time, weekdays, after the regular cash-market close.
     - cron: "30 14 * * 1-5"
