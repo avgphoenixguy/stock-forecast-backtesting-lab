@@ -7,6 +7,7 @@ on:
       - ".github/workflows/daily-forecast.yml"
       - "scripts/download_data.py"
       - "scripts/run_daily_forecast.py"
+      - "scripts/update_nifty500_universe.py"
       - "requirements.txt"
       - "requirements-forecast.txt"
   schedule:
@@ -48,6 +49,9 @@ jobs:
       - name: Run project tests
         run: python -m pytest -q
 
+      - name: Refresh official Nifty 500 searchable directory
+        run: python scripts/update_nifty500_universe.py
+
       - name: Refresh and validate adjusted daily OHLC
         run: python scripts/download_data.py --ticker RELIANCE.NS
 
@@ -60,7 +64,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add dashboard/data/daily_forecast_history_RELIANCE_NS.csv dashboard/data/latest_forecast_RELIANCE_NS.json dashboard/data/price_history_RELIANCE_NS.csv
+          git add dashboard/data/daily_forecast_history_RELIANCE_NS.csv dashboard/data/latest_forecast_RELIANCE_NS.json dashboard/data/price_history_RELIANCE_NS.csv dashboard/data/nifty500_universe.csv
           if git diff --cached --quiet; then
             echo "No new market session or forecast history changes; nothing to commit."
           else
