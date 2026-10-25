@@ -323,7 +323,7 @@ def load_all_reports(ticker: str) -> dict[str, object]:
     return data
 
 
-def show_overview(data: dict[str, object]) -> None:
+def show_overview(data: dict[str, object], cost_bps: float) -> None:
     """Render the main research summary."""
     regression = data["regression"].copy()
     costs = data["costs"].copy()
@@ -340,6 +340,11 @@ def show_overview(data: dict[str, object]) -> None:
     st.write(
         "An interactive view of historical forecasting experiments and "
         "an exploratory trading-strategy backtest for Reliance Industries."
+    )
+    st.info(
+        "Use the left sidebar to navigate between sections. The Strategy "
+        "backtest page contains interactive cumulative-return and drawdown "
+        "charts; the cost selector in the sidebar updates the results."
     )
 
     st.warning(
@@ -384,7 +389,7 @@ def show_overview(data: dict[str, object]) -> None:
         title="Next-Day Log-Return Forecast Error",
     )
     fig.update_layout(yaxis={"categoryorder": "total ascending"})
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     if not random_walk.empty:
         rw_error = float(random_walk.iloc[0]["log_return_mae_bps"])
@@ -393,10 +398,10 @@ def show_overview(data: dict[str, object]) -> None:
             "Lower forecast error is better."
         )
 
-    st.subheader("Strategy results at 10 bps per side")
+    st.subheader(f"Strategy results at {cost_bps:g} bps per side")
 
     primary = costs.loc[
-        costs["one_way_cost_assumption_bps"] == 10.0
+        costs["one_way_cost_assumption_bps"] == cost_bps
     ].copy()
 
     if not primary.empty:
@@ -412,10 +417,10 @@ def show_overview(data: dict[str, object]) -> None:
                 "net_total_return_pct": "Net cumulative return (%)",
                 "display_model": "Strategy",
             },
-            title="Historical Net Cumulative Returns",
+            title=f"Historical Net Cumulative Returns at {cost_bps:g} bps per side",
         )
         fig.update_layout(yaxis={"categoryorder": "total ascending"})
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         st.caption(
             "The buy-and-hold benchmark and the intraday strategies have "
@@ -455,7 +460,7 @@ def show_forecast_comparison(data: dict[str, object]) -> None:
                 "directional_accuracy_pct": "Direction accuracy (%)",
             }
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -499,7 +504,7 @@ def show_forecast_comparison(data: dict[str, object]) -> None:
 
     st.dataframe(
         classifier[desired_display].rename(columns=rename),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -583,7 +588,7 @@ def show_strategy_backtest(
         title="Cumulative Net Returns",
     )
     fig.add_hline(y=0.0, line_dash="dash")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     st.subheader("Drawdowns")
 
@@ -601,7 +606,7 @@ def show_strategy_backtest(
         title="Drawdown from Historical Equity Peak",
     )
     fig.add_hline(y=0.0, line_dash="dash")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     st.subheader("Strategy metrics for the selected cost")
 
@@ -631,7 +636,7 @@ def show_strategy_backtest(
                 "max_net_drawdown_pct": "Maximum drawdown (%)",
             }
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -719,7 +724,7 @@ def show_daily_positions(
                 ),
             }
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -841,7 +846,7 @@ def main() -> None:
     st.sidebar.caption("Development cutoff: 2022-06-14")
 
     if page == "Overview":
-        show_overview(data)
+        show_overview(data, cost_bps)
     elif page == "Forecast comparison":
         show_forecast_comparison(data)
     elif page == "Strategy backtest":
