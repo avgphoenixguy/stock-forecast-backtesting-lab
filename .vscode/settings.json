@@ -1,0 +1,8 @@
+
+{
+    "code-runner.executorMap": {
+        "python": "$pythonPath -u $fullFileName"
+    },
+    "code-runner.runInTerminal": true,
+    "code-runner.saveFileBeforeRun": true
+}
