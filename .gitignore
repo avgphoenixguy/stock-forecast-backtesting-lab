@@ -29,3 +29,6 @@ reports/*.json
 
 # Superseded notebook-based diagnostics
 /notebooks/reliance_data_diagnostics.ipynb
+
+# Generated Markdown reports
+reports/*.md
