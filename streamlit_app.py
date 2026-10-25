@@ -1246,9 +1246,14 @@ def show_latest_forecast(ticker: str) -> None:
             batch = forecast_frame.iloc[offset : offset + 3]
             for column, (_, forecast) in zip(model_columns, batch.iterrows()):
                 with column:
+                    predicted_price = float(forecast["predicted_next_close"])
+                    price_delta = predicted_price - latest_close
+                    price_delta_pct = (price_delta / latest_close) * 100.0
                     st.metric(
                         str(forecast["model_label"]),
-                        f"₹{float(forecast['predicted_next_close']):,.2f}",
+                        f"₹{predicted_price:,.2f}",
+                        delta=f"{price_delta:+,.2f} ₹ ({price_delta_pct:+.2f}%)",
+                        help="Difference from the latest adjusted close reference; this is not an expected profit.",
                     )
                     st.caption(
                         f"Implied log return: "
