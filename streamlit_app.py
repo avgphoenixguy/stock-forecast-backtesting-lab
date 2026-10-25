@@ -1339,10 +1339,28 @@ def show_latest_forecast(ticker: str) -> None:
         history[column] = pd.to_numeric(history[column], errors="coerce")
 
     scored = history.dropna(subset=["target_date", "actual_close"]).copy()
+    total_forecasts = int(len(history))
+    scored_forecast_rows = int(len(scored))
+    pending_forecast_rows = total_forecasts - scored_forecast_rows
+
+    st.markdown(
+        '<div class="pfl-section-label">Live forecast tracking</div>',
+        unsafe_allow_html=True,
+    )
+    tracker_columns = st.columns(3)
+    tracker_columns[0].metric("Recorded model forecasts", f"{total_forecasts:,}")
+    tracker_columns[1].metric("Scored forecast records", f"{scored_forecast_rows:,}")
+    tracker_columns[2].metric("Pending outcomes", f"{pending_forecast_rows:,}")
+
     if scored.empty:
         st.info(
-            "The first forecast is waiting for the next completed trading session "
-            "to arrive, so there are no scored forecasts yet."
+            "The first forecasts are waiting for the next completed trading session. "
+            "Once the actual close is available, the workflow will score each model "
+            "and the live accuracy leaderboard will populate automatically."
+        )
+        st.caption(
+            "Forecast records are created after the most recent validated OHLC session; "
+            "they are scored against the next observed session, not the next calendar day."
         )
         return
 
