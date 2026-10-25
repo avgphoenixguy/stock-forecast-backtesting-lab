@@ -11,7 +11,7 @@ The historical model-comparison and strategy-backtest research is based on Relia
 
 **[Launch PriceForecastLab](https://price-forecast-lab.streamlit.app/)** to explore the research interactively.
 
-- **Search Nifty 500:** type a company name or NSE symbol in the searchable selector. The constituent directory is refreshed from the official Nifty Indices constituent CSV.
+- **Search Nifty 500:** type a company name or NSE symbol in the searchable selector. The directory is refreshed from the [official Nifty Indices constituent CSV](https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv); the snapshot currently published in the repository contains 501 constituent records (the count can change with index rebalances).
 - **Price Forecast:** view recent adjusted-OHLC candlesticks, the latest adjusted close, per-model next-session price estimates, and a chart comparing those estimates against the reference close.
 - **On-demand preview:** when a ticker has no saved daily forecast, the app fetches recent adjusted OHLC and attempts the lightweight baseline, econometric and ML models. A preview is cached temporarily and is clearly labelled; it is not added to the persistent forecast leaderboard.
 - **Forecast tracking:** inspect the persistent model leaderboard with MAE, RMSE, return bias and directional accuracy for tickers with recorded outcomes; once enough outcomes accumulate, view rolling error charts and download the forecast log.
@@ -19,6 +19,8 @@ The historical model-comparison and strategy-backtest research is based on Relia
 - **Research Lab → Strategy backtest / Daily decisions:** explore historical cumulative-return and drawdown charts, transaction-cost scenarios, and saved daily decisions.
 
 The public app is forecast-first and offers searchable Nifty 500 constituents. The stock directory is refreshed by GitHub Actions; selected stocks without a saved forecast can request a temporary, cached preview using validated daily adjusted OHLC. Reliance is currently the only ticker with persistent scheduled multi-model forecast history; the Research Lab's fixed historical comparison and strategy backtest also remain Reliance-only. No trades are placed. Transaction-cost settings apply only to historical strategy estimates; they do not change price forecasts or forecast-error metrics.
+
+The current searchable directory is published at [`dashboard/data/nifty500_universe.csv`](https://github.com/avgphoenixguy/stock-forecast-backtesting-lab/blob/main/dashboard/data/nifty500_universe.csv). It includes company name, NSE symbol, Yahoo-compatible ticker, industry where provided, source URL and refresh timestamp.
 
 ## Automated Daily Forecasts
 
