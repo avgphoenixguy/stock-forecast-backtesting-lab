@@ -147,13 +147,30 @@ p, li, label { line-height: 1.55; }
 .pfl-forecast-meta strong { color: #dce8f5; font-weight: 650; }
 .pfl-footer {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
-  gap: 8px; margin-top: 42px; padding: 20px 10px 8px;
+  gap: 12px; margin-top: 42px; padding: 22px 10px 8px;
   border-top: 1px solid var(--pfl-line); color: var(--pfl-muted);
   font-size: 12px; text-align: center;
 }
-.pfl-footer-heart { color: #ff7f9e; }
-.pfl-footer a { color: var(--pfl-teal) !important; text-decoration: none; font-weight: 750; }
-.pfl-footer a:hover { text-decoration: underline; }
+.pfl-footer-author { display: inline-flex; align-items: center; gap: 4px; }
+.pfl-footer-heart-icon {
+  display: inline-block; width: 14px; height: 14px; margin: 0 2px;
+  vertical-align: -2px; fill: #ff5b83;
+  filter: drop-shadow(0 0 4px rgba(255, 91, 131, 0.28));
+  flex: 0 0 auto;
+}
+.pfl-footer-socials { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+.pfl-footer-socials a {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px;
+  border: 1px solid rgba(122, 181, 255, 0.20); border-radius: 999px;
+  background: rgba(122, 181, 255, 0.045); color: #b6d9ff !important;
+  text-decoration: none !important; font-weight: 700;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+.pfl-footer-socials a:hover {
+  border-color: rgba(83, 224, 193, 0.55); background: rgba(83, 224, 193, 0.08);
+  transform: translateY(-1px); text-decoration: none !important;
+}
+.pfl-footer-socials svg { width: 13px; height: 13px; fill: currentColor; display: block; }
 [data-testid="stMetric"] {
   background: linear-gradient(145deg, rgba(20, 34, 52, 0.94), rgba(14, 24, 39, 0.94));
   border: 1px solid var(--pfl-line); padding: 16px 18px;
@@ -1773,17 +1790,36 @@ def show_latest_forecast(ticker: str) -> None:
 
 
 def render_signature_footer() -> None:
-    """Render the author's signature and social link at the end of each workspace."""
+    """Render the author's signature and social links at the end of each workspace."""
     st.markdown(
         """
         <footer class="pfl-footer">
-          <span>Created with <span class="pfl-footer-heart">♥</span> by
-            <strong>avgphoenixguy · Krishna Lahoti</strong>
+          <span class="pfl-footer-author">
+            Created with
+            <svg class="pfl-footer-heart-icon" viewBox="0 0 24 24" role="img" aria-label="love">
+              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5
+                2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09
+                C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5
+                c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
+            </svg>
+            by <strong>avgphoenixguy · Krishna Lahoti</strong>
           </span>
-          <span aria-hidden="true">·</span>
-          <a href="https://x.com/avgphoenixguy" target="_blank" rel="noopener noreferrer">
-            Follow on X / Twitter ↗
-          </a>
+          <nav class="pfl-footer-socials" aria-label="Social profiles">
+            <a href="https://x.com/avgphoenixguy" target="_blank" rel="noopener noreferrer"
+               aria-label="Krishna Lahoti on X">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18.9 2H22l-6.78 7.75L23.2 22h-6.25l-4.9-7.35L5.6 22H2.47l7.25-8.29L1.8 2h6.4l4.43 6.75L18.9 2zm-1.1 17.85h1.73L7.27 4.04H5.41L17.8 19.85z"></path>
+              </svg>
+              X / Twitter
+            </a>
+            <a href="https://www.linkedin.com/in/krishnalahoti/" target="_blank" rel="noopener noreferrer"
+               aria-label="Krishna Lahoti on LinkedIn">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.35V9h3.414v1.561h.049c.476-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.369 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 1 1 0-4.124 2.062 2.062 0 0 1 0 4.124zM7.119 20.452H3.554V9h3.565v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0z"></path>
+              </svg>
+              LinkedIn
+            </a>
+          </nav>
         </footer>
         """,
         unsafe_allow_html=True,
