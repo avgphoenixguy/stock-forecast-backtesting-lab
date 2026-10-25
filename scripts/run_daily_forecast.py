@@ -196,7 +196,7 @@ def _forecast_random_walk_and_drift(
     del log_closes
     return {
         "random_walk": 0.0,
-        "drift": float(np.mean(trained_returns[-MAX_SUPERVISED_ROWS:])),
+        "drift": float(np.mean(trained_returns)),
     }
 
 
@@ -624,7 +624,9 @@ def build_latest_payload(
         "ticker": ticker,
         "latest_ohlc_date": latest_ohlc_date,
         "forecast_origin_date": latest_origin,
-        "generated_at_utc": str(latest["generated_at_utc"].iloc[-1]),
+        "generated_at_utc": pd.to_datetime(
+            latest["generated_at_utc"], utc=True
+        ).max().isoformat(),
         "forecast_horizon": "next observed trading session",
         "model_scope": [
             "Random Walk", "Random Walk with Drift", "ARIMA(1,1,1)",
