@@ -928,11 +928,6 @@ def show_latest_forecast(ticker: str) -> None:
     origin_date = payload.get("forecast_origin_date", "Unknown")
     generated_at = payload.get("generated_at_utc", "Unknown")
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Latest OHLC session", str(latest_ohlc_date))
-    c2.metric("Forecast origin", str(origin_date))
-    c3.metric("Forecast models", f"{len(payload.get('forecasts', []))}")
-
     st.caption(
         f"Forecast generated at (UTC): {generated_at} · "
         f"Source: {payload.get('data_source', 'not specified')} · "
