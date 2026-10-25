@@ -976,21 +976,6 @@ def show_latest_forecast(ticker: str) -> None:
         c2.metric("Latest OHLC session", str(latest_ohlc_date))
         c3.metric("Successful forecasts", f"{len(forecast_frame)}")
 
-        st.markdown('<div class="pfl-section-label">Model forecast board</div>', unsafe_allow_html=True)
-        for offset in range(0, len(forecast_frame), 3):
-            model_columns = st.columns(3)
-            batch = forecast_frame.iloc[offset : offset + 3]
-            for column, (_, forecast) in zip(model_columns, batch.iterrows()):
-                with column:
-                    st.metric(
-                        str(forecast["model_label"]),
-                        f"₹{float(forecast['predicted_next_close']):,.2f}",
-                    )
-                    st.caption(
-                        f"Implied log return: "
-                        f"{float(forecast['predicted_next_log_return_bps']):+.2f} bps"
-                    )
-
         st.markdown('<div class="pfl-section-label">Forecast disagreement</div>', unsafe_allow_html=True)
         plot_data = forecast_frame.sort_values("predicted_return_pct", ascending=True)
         fig = px.bar(
@@ -1020,6 +1005,21 @@ def show_latest_forecast(ticker: str) -> None:
             paper_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+        st.markdown('<div class="pfl-section-label">Model forecast board</div>', unsafe_allow_html=True)
+        for offset in range(0, len(forecast_frame), 3):
+            model_columns = st.columns(3)
+            batch = forecast_frame.iloc[offset : offset + 3]
+            for column, (_, forecast) in zip(model_columns, batch.iterrows()):
+                with column:
+                    st.metric(
+                        str(forecast["model_label"]),
+                        f"₹{float(forecast['predicted_next_close']):,.2f}",
+                    )
+                    st.caption(
+                        f"Implied log return: "
+                        f"{float(forecast['predicted_next_log_return_bps']):+.2f} bps"
+                    )
 
         display_frame = forecast_frame[
             [
