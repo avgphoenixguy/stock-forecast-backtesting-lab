@@ -1107,6 +1107,40 @@ def show_latest_forecast(ticker: str) -> None:
         )
         return
 
+    st.markdown('<div class="pfl-section-label">Performance since live tracking began</div>', unsafe_allow_html=True)
+    performance = (
+        scored.groupby("model", dropna=True)
+        .agg(
+            scored_forecasts=("target_date", "count"),
+            close_mae=("absolute_close_error", "mean"),
+            return_mae_bps=("absolute_return_error_bps", "mean"),
+            direction_accuracy_pct=(
+                "direction_correct",
+                lambda values: float(values.mean() * 100.0) if values.notna().any() else np.nan,
+            ),
+        )
+        .reset_index()
+        .sort_values("return_mae_bps", na_position="last")
+    )
+    performance["model"] = performance["model"].map(
+        lambda model: FORECAST_MODEL_LABELS.get(str(model), format_model_label(str(model)))
+    )
+    st.dataframe(
+        performance.rename(columns={
+            "model": "Model",
+            "scored_forecasts": "Scored forecasts",
+            "close_mae": "Close MAE (₹)",
+            "return_mae_bps": "Return MAE (bps)",
+            "direction_accuracy_pct": "Direction accuracy (%)",
+        }),
+        width="stretch",
+        hide_index=True,
+    )
+    st.caption(
+        "This scorecard uses only forecasts recorded since automated tracking began. "
+        "Early samples are small; do not treat the current ranking as a reliable model winner."
+    )
+
     models = sorted(scored["model"].dropna().unique().tolist())
     selected_model = st.selectbox(
         "Model in historical chart",
