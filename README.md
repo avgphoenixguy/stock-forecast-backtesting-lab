@@ -195,6 +195,14 @@ Install dependencies:
 python -m pip install -r requirements.txt
 ```
 
+For the full scheduled multi-model forecast suite—including ARIMA, Holt damped-trend smoothing, LSTM and GRU—install the additional forecast dependencies as well:
+
+```bash
+python -m pip install -r requirements-forecast.txt
+```
+
+The Streamlit dashboard itself reads published forecast outputs, so the heavier TensorFlow dependency is installed in the daily forecast workflow rather than being required for the basic dashboard UI.
+
 ### Download Historical Data
 
 Download maximum available daily history for Reliance Industries:
