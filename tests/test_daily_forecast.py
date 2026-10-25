@@ -148,3 +148,24 @@ def test_price_history_snapshot_rejects_duplicate_dates():
         assert "duplicate" in str(exc).lower()
     else:
         raise AssertionError("Expected duplicate OHLC dates to be rejected.")
+
+
+def test_on_demand_forecast_accepts_one_year_plus_history():
+    dates = pd.bdate_range(end="2026-10-23", periods=300)
+    rng = np.random.default_rng(42)
+    returns = rng.normal(loc=0.0002, scale=0.012, size=len(dates))
+    closes = 100.0 * np.exp(np.cumsum(returns))
+    market = sample_market(closes)
+    market["date"] = dates
+
+    result = make_daily_forecasts(
+        market,
+        "NEWLISTING.NS",
+        "2026-10-25T17:00:00+00:00",
+        research_start="2020-01-01",
+        min_observations=252,
+    )
+
+    assert {"random_walk", "drift"}.issubset(set(result["model"]))
+    assert np.isfinite(result["predicted_next_close"].to_numpy(dtype=float)).all()
+
