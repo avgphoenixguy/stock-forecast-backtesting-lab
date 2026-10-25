@@ -1,0 +1,4 @@
+# Additional packages used by the scheduled multi-model forecast job.
+# TensorFlow CPU wheels for Python 3.12 are available from the official release channel.
+statsmodels>=0.14.5,<0.15
+tensorflow-cpu==2.20.0
