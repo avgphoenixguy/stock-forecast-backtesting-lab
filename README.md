@@ -5,18 +5,20 @@
 
 A Python-based quantitative research project investigating whether machine learning can improve next-day stock return forecasts and whether forecast-driven trading strategies can outperform simple benchmarks after transaction costs.
 
-The project uses historical data for Reliance Industries Limited (`RELIANCE.NS`), with chronological walk-forward validation, baseline comparisons, feature experiments, and an exploratory trading-strategy backtest.
+The historical model-comparison and strategy-backtest research is based on Reliance Industries Limited (`RELIANCE.NS`). The public forecast page now includes a searchable Nifty 500 constituent directory and can generate an on-demand forecast preview for supported symbols. Reliance remains the first ticker with persistent daily forecast tracking.
 
 ## Live Dashboard
 
 **[Launch PriceForecastLab](https://price-forecast-lab.streamlit.app/)** to explore the research interactively.
 
+- **Search Nifty 500:** type a company name or NSE symbol in the searchable selector. The constituent directory is refreshed from the official Nifty Indices constituent CSV.
 - **Price Forecast:** view recent adjusted-OHLC candlesticks, the latest adjusted close, per-model next-session price estimates, and a chart comparing those estimates against the reference close.
-- **Forecast tracking:** inspect the live model leaderboard with MAE, RMSE, return bias and directional accuracy; once enough outcomes accumulate, view a rolling 20-forecast return-MAE chart and download the forecast log.
+- **On-demand preview:** when a ticker has no saved daily forecast, the app fetches recent adjusted OHLC and attempts the lightweight baseline, econometric and ML models. A preview is cached temporarily and is clearly labelled; it is not added to the persistent forecast leaderboard.
+- **Forecast tracking:** inspect the persistent model leaderboard with MAE, RMSE, return bias and directional accuracy for tickers with recorded outcomes; once enough outcomes accumulate, view rolling error charts and download the forecast log.
 - **Research Lab → Overview / Model comparison:** review fixed historical model results and classification metrics.
 - **Research Lab → Strategy backtest / Daily decisions:** explore historical cumulative-return and drawdown charts, transaction-cost scenarios, and saved daily decisions.
 
-The public app is forecast-first. It displays the latest forecast output published by GitHub Actions from validated daily adjusted OHLC, and separates that product view from the historical **Research Lab**. The browser does not download prices or fit models on each page load, and no trades are placed. Transaction-cost settings apply only to historical strategy estimates; they do not change price forecasts or forecast-error metrics.
+The public app is forecast-first and offers searchable Nifty 500 constituents. The stock directory is refreshed by GitHub Actions; selected stocks without a saved forecast can request a temporary, cached preview using validated daily adjusted OHLC. Reliance is currently the only ticker with persistent scheduled multi-model forecast history; the Research Lab's fixed historical comparison and strategy backtest also remain Reliance-only. No trades are placed. Transaction-cost settings apply only to historical strategy estimates; they do not change price forecasts or forecast-error metrics.
 
 ## Automated Daily Forecasts
 
@@ -25,18 +27,19 @@ A GitHub Actions workflow is configured in `.github/workflows/daily-forecast.yml
 On a successful run, the workflow:
 
 1. Runs the project test suite.
-2. Installs the separate forecasting dependencies in `requirements-forecast.txt`, including statsmodels and TensorFlow CPU.
-3. Downloads and validates the latest available daily adjusted OHLC history for `RELIANCE.NS`.
-4. Scores prior recorded forecasts when the next observed trading session is available.
-5. Attempts a focused suite of daily forecasts: Random Walk, Random Walk with Drift, ARIMA(1,1,1), Holt damped-trend exponential smoothing, Ridge Regression, Random Forest, Histogram Gradient Boosting, LSTM, and GRU.
-6. Builds an unweighted median-return ensemble from the models that successfully produce a forecast.
-7. Publishes the latest forecast JSON, dated forecast-history CSV and a five-year adjusted-OHLC chart snapshot to `dashboard/data/` for the hosted app.
+2. Refreshes and validates the official Nifty 500 constituent directory.
+3. Installs the separate forecasting dependencies in `requirements-forecast.txt`, including TensorFlow CPU for the scheduled deep-learning models.
+4. Downloads and validates the latest available daily adjusted OHLC history for `RELIANCE.NS`.
+5. Scores prior recorded forecasts when the next observed trading session is available.
+6. Attempts Random Walk, Random Walk with Drift, ARIMA(1,1,1), Holt damped-trend exponential smoothing, Ridge Regression, Random Forest, Histogram Gradient Boosting, LSTM and GRU for the persistent Reliance forecast record.
+7. Builds an unweighted median-return ensemble from the models that successfully produce a forecast.
+8. Publishes the latest forecast JSON, dated forecast-history CSV, five-year adjusted-OHLC chart snapshot and refreshed Nifty 500 directory to `dashboard/data/` for the hosted app.
 
 Individual model failures are recorded in the latest forecast diagnostics; one unavailable model should not hide results from other models. The ensemble is a transparent baseline aggregation, not a proven or optimized trading strategy.
 
 The data provider is Yahoo Finance accessed through `yfinance`. Data availability and scheduled GitHub Actions execution are not guaranteed at an exact time. The workflow rejects stale data rather than intentionally generating a new forecast from a dataset older than its configured freshness limit. Check the Actions run history for success or failure.
 
-**Daily forecast scope:** the scheduled workflow attempts the models listed above, but the live page only displays models that succeed on a particular run. LSTM/GRU runs use modest fixed architectures and need their own rolling walk-forward evaluation before they should be interpreted as competitive models. The historical multi-model backtest and comparison tables remain the documented development experiment ending June 14, 2022; the daily process does not silently extend or replace that experiment. Daily forecasts are research records, not trading signals or guarantees of performance.
+**Daily forecast scope:** the scheduled deep model suite and persistent forecast history currently run for `RELIANCE.NS`. Other Nifty 500 tickers are searchable and can receive on-demand previews, but those previews are cached temporarily and do not enter the persistent scorecard. The on-demand path uses the available baseline, econometric and lightweight ML models; it intentionally does not fit LSTM/GRU inside the Streamlit request. LSTM/GRU use modest fixed architectures and still need rolling walk-forward evaluation before being interpreted as competitive. The historical multi-model backtest and comparison tables remain the documented development experiment ending June 14, 2022; the daily process does not silently extend or replace that experiment. Daily forecasts are research records, not trading signals or guarantees of performance.
 
 **Research conclusion:** The tested machine-learning models did not outperform the Random Walk benchmark on overall return forecast errors. The initial forecast-driven trading rule also performed poorly after costs. These negative results are documented rather than presented as a successful trading system.
 
@@ -44,7 +47,8 @@ The data provider is Yahoo Finance accessed through `yfinance`. Data availabilit
 
 The research pipeline covers:
 
-- Historical stock-price acquisition and data validation.
+- Official Nifty 500 constituent directory refresh and searchable company/symbol matching.
+- Historical stock-price acquisition, daily OHLC validation and cached on-demand forecasting.
 - Random Walk and Random Walk with Drift benchmarks.
 - ARIMA(1,1,1) and Holt damped-trend exponential smoothing for econometric baselines.
 - Ridge Regression, Random Forest and Histogram Gradient Boosting for next-session returns.
