@@ -171,30 +171,6 @@ p, li, label { line-height: 1.55; }
   transform: translateY(-1px); text-decoration: none !important;
 }
 .pfl-footer-socials svg { width: 13px; height: 13px; fill: currentColor; display: block; }
-.pfl-github-float {
-  /* Leave room for the hosting platform's bottom-right "Manage apps" overlay. */
-  position: fixed; right: 22px; bottom: 82px; z-index: 9999;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 46px; height: 46px; border-radius: 50%;
-  color: #f5f8fd !important;
-  background: linear-gradient(145deg, #1d2d42, #101b2a);
-  border: 1px solid rgba(122, 181, 255, 0.42);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32), 0 0 0 4px rgba(122, 181, 255, 0.05);
-  text-decoration: none !important;
-  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
-}
-.pfl-github-float:hover {
-  color: #ffffff !important;
-  transform: translateY(-3px);
-  border-color: rgba(83, 224, 193, 0.8);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38), 0 0 0 5px rgba(83, 224, 193, 0.08);
-}
-.pfl-github-float svg { display: block; width: 25px; height: 25px; fill: currentColor; }
-.pfl-github-float:focus-visible { outline: 2px solid var(--pfl-teal); outline-offset: 4px; }
-@media (max-width: 700px) {
-  .pfl-github-float { right: 14px; bottom: 76px; width: 42px; height: 42px; }
-  .pfl-github-float svg { width: 23px; height: 23px; }
-}
 [data-testid="stMetric"] {
   background: linear-gradient(145deg, rgba(20, 34, 52, 0.94), rgba(14, 24, 39, 0.94));
   border: 1px solid var(--pfl-line); padding: 16px 18px;
@@ -1859,23 +1835,7 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
     st.markdown(APP_CSS, unsafe_allow_html=True)
-    st.markdown(
-        """
-        <a class="pfl-github-float"
-           href="https://github.com/avgphoenixguy"
-           target="_blank"
-           rel="noopener noreferrer"
-           title="Visit avgphoenixguy on GitHub"
-           aria-label="Visit avgphoenixguy on GitHub">
-          <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
-            <path d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.53v-2.05c-3.1.68-3.75-1.32-3.75-1.32-.5-1.3-1.24-1.65-1.24-1.65-1.02-.7.08-.69.08-.69 1.13.08 1.72 1.16 1.72 1.16 1 .1.76 2.07 3.25 1.57.1-.73.4-1.23.7-1.52-2.48-.28-5.09-1.24-5.09-5.52 0-1.22.44-2.22 1.16-3.01-.12-.28-.5-1.42.11-2.96 0 0 .95-.3 3.05 1.15a10.6 10.6 0 0 1 5.55 0c2.1-1.45 3.05-1.15 3.05-1.15.61 1.54.23 2.68.11 2.96.72.79 1.16 1.79 1.16 3.01 0 4.29-2.62 5.23-5.11 5.51.4.34.75 1.02.75 2.06V22c0 .29.2.63.76.52A11.1 11.1 0 0 0 12 .9z"></path>
-          </svg>
-        </a>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.sidebar.markdown(
+    st.sidebar.markdown(    st.sidebar.markdown(
         """
         <div class="pfl-sidebar-brand">
           <div class="pfl-logo">PF</div>
