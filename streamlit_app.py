@@ -1835,7 +1835,7 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
     st.markdown(APP_CSS, unsafe_allow_html=True)
-    st.sidebar.markdown(    st.sidebar.markdown(
+    st.sidebar.markdown(
         """
         <div class="pfl-sidebar-brand">
           <div class="pfl-logo">PF</div>
