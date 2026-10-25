@@ -35,6 +35,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
+      - name: Run project tests
+        run: python -m pytest -q
+
       - name: Refresh and validate adjusted daily OHLC
         run: python scripts/download_data.py --ticker RELIANCE.NS
 
