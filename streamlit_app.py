@@ -970,12 +970,12 @@ def show_latest_forecast(ticker: str) -> None:
 
 def main() -> None:
     st.set_page_config(
-        page_title="Stock Forecast & Backtesting Lab",
+        page_title="PriceForecastLab | Stock Forecast & Backtesting Lab",
         page_icon="📈",
         layout="wide",
     )
 
-    st.sidebar.title("Research Lab")
+    st.sidebar.title("PriceForecastLab")
     st.sidebar.caption("Reliance Industries · RELIANCE.NS")
 
     ticker = st.sidebar.text_input(
