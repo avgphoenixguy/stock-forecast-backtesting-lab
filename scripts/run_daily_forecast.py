@@ -422,6 +422,7 @@ def make_daily_forecasts(
     generated_at_utc: str,
     research_start: str = DEFAULT_RESEARCH_START,
     include_deep_learning: bool = False,
+    min_observations: int = MIN_OBSERVATIONS,
 ) -> pd.DataFrame:
     """Produce all available daily model forecasts, with per-model failure notes."""
     required = {"date", "open", "high", "low", "close", "volume"}
@@ -430,9 +431,11 @@ def make_daily_forecasts(
 
     window = data.loc[pd.to_datetime(data["date"]) >= pd.Timestamp(research_start)].copy()
     window = window.sort_values("date").reset_index(drop=True)
-    if len(window) < MIN_OBSERVATIONS:
+    if min_observations < 60:
+        raise ValueError("min_observations must be at least 60.")
+    if len(window) < min_observations:
         raise ValueError(
-            f"Need at least {MIN_OBSERVATIONS} observations since {research_start}; "
+            f"Need at least {min_observations} observations since {research_start}; "
             f"found {len(window)}."
         )
 
