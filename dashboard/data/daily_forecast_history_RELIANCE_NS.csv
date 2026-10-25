@@ -1,0 +1,3 @@
+ticker,origin_date,generated_at_utc,model,input_close,predicted_next_log_return_bps,predicted_next_close,target_date,actual_close,actual_log_return_bps,absolute_close_error,absolute_return_error_bps,direction_correct,data_source,price_adjustment
+RELIANCE.NS,2026-10-23,2026-10-25T16:40:03+00:00,drift,1190.0,6.690798773626345,1190.7964714758673,,,,,,,Yahoo Finance via yfinance,auto_adjust=True
+RELIANCE.NS,2026-10-23,2026-10-25T16:40:03+00:00,random_walk,1190.0,0.0,1190.0,,,,,,,Yahoo Finance via yfinance,auto_adjust=True
