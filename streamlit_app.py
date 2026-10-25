@@ -115,6 +115,15 @@ p, li, label { line-height: 1.55; }
 }
 .pfl-section-label { color: var(--pfl-muted); font-size: 11px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase; margin: 22px 0 10px; }
 .pfl-small-note { color: var(--pfl-muted); font-size: 12px; }
+.pfl-footer {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 8px; margin-top: 42px; padding: 20px 10px 8px;
+  border-top: 1px solid var(--pfl-line); color: var(--pfl-muted);
+  font-size: 12px; text-align: center;
+}
+.pfl-footer-heart { color: #ff7f9e; }
+.pfl-footer a { color: var(--pfl-teal) !important; text-decoration: none; font-weight: 750; }
+.pfl-footer a:hover { text-decoration: underline; }
 [data-testid="stMetric"] {
   background: linear-gradient(145deg, rgba(20, 34, 52, 0.94), rgba(14, 24, 39, 0.94));
   border: 1px solid var(--pfl-line); padding: 16px 18px;
@@ -1211,6 +1220,24 @@ def show_latest_forecast(ticker: str) -> None:
 
 
 
+def render_signature_footer() -> None:
+    """Render the author's signature and social link at the end of each workspace."""
+    st.markdown(
+        """
+        <footer class="pfl-footer">
+          <span>Created with <span class="pfl-footer-heart">♥</span> by
+            <strong>avgphoenixguy · Krishna Lahoti</strong>
+          </span>
+          <span aria-hidden="true">·</span>
+          <a href="https://x.com/avgphoenixguy" target="_blank" rel="noopener noreferrer">
+            Follow on X / Twitter ↗
+          </a>
+        </footer>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def main() -> None:
     """Render the product-facing forecast page and the separate research workspace."""
     st.set_page_config(
@@ -1261,6 +1288,7 @@ def main() -> None:
             'Historical results do not establish future performance.</div>',
             unsafe_allow_html=True,
         )
+        render_signature_footer()
         return
 
     st.title("Research Lab")
@@ -1361,6 +1389,7 @@ def main() -> None:
         'Not investment advice, not a live execution system.</div>',
         unsafe_allow_html=True,
     )
+    render_signature_footer()
 
 
 if __name__ == "__main__":
