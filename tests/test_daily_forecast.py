@@ -13,24 +13,36 @@ from scripts.run_daily_forecast import (
 
 
 def sample_market(closes):
+    """Build internally consistent synthetic OHLCV input."""
     dates = pd.bdate_range("2026-01-05", periods=len(closes))
-    return pd.DataFrame({"date": dates, "close": closes})
+    close = np.asarray(closes, dtype=float)
+    open_prices = close * 0.998
+    high_prices = np.maximum(open_prices, close) * 1.002
+    low_prices = np.minimum(open_prices, close) * 0.998
+    return pd.DataFrame({
+        "date": dates,
+        "open": open_prices,
+        "high": high_prices,
+        "low": low_prices,
+        "close": close,
+        "volume": np.full(len(close), 1_000_000.0),
+    })
 
 
 def test_daily_forecasts_include_random_walk_and_drift():
-    data = sample_market([100.0, 101.0, 99.0, 102.0])
-    # Lower the training minimum only by using a small research window in a
-    # lightweight isolated test? The function uses the production minimum,
-    # so extend this sample to the required history length.
     dates = pd.bdate_range("2020-01-01", periods=800)
     closes = 100.0 * np.exp(np.linspace(0.0, 0.2, len(dates)))
-    data = pd.DataFrame({"date": dates, "close": closes})
+    data = sample_market(closes)
+    data["date"] = dates
 
     result = make_daily_forecasts(
         data, "RELIANCE.NS", "2026-01-01T00:00:00+00:00", "2020-01-01"
     )
-    assert set(result["model"]) == {"random_walk", "drift"}
-    assert len(result) == 2
+    # Econometric dependencies may be absent from the lightweight test env;
+    # the baseline and any successfully fit ML forecasts must still be present.
+    assert {"random_walk", "drift"}.issubset(set(result["model"]))
+    assert len(result) >= 2
+    assert np.isfinite(result["predicted_next_close"].to_numpy(dtype=float)).all()
     latest_close = float(closes[-1])
     random_walk = result.loc[result["model"] == "random_walk"].iloc[0]
     assert random_walk["input_close"] == latest_close
@@ -72,7 +84,8 @@ def test_pending_forecast_is_scored_on_first_later_market_session():
 def test_update_history_is_idempotent_for_same_origin_date():
     dates = pd.bdate_range("2020-01-01", periods=800)
     closes = 100.0 * np.exp(np.linspace(0.0, 0.2, len(dates)))
-    market = pd.DataFrame({"date": dates, "close": closes})
+    market = sample_market(closes)
+    market["date"] = dates
 
     first = update_forecast_history(
         market, empty_history(), "RELIANCE.NS",
@@ -82,8 +95,8 @@ def test_update_history_is_idempotent_for_same_origin_date():
         market, first, "RELIANCE.NS",
         "2026-01-01T01:00:00+00:00", "2020-01-01",
     )
-    assert len(first) == 2
-    assert len(second) == 2
+    assert len(first) >= 2
+    assert len(second) == len(first)
     assert not second.duplicated(["origin_date", "model"]).any()
     assert set(second["origin_date"]) == {pd.Timestamp(dates[-1]).strftime("%Y-%m-%d")}
 
@@ -91,7 +104,8 @@ def test_update_history_is_idempotent_for_same_origin_date():
 def test_latest_payload_has_latest_forecasts():
     dates = pd.bdate_range("2020-01-01", periods=800)
     closes = 100.0 * np.exp(np.linspace(0.0, 0.2, len(dates)))
-    market = pd.DataFrame({"date": dates, "close": closes})
+    market = sample_market(closes)
+    market["date"] = dates
     history = update_forecast_history(
         market, empty_history(), "RELIANCE.NS",
         "2026-01-01T00:00:00+00:00", "2020-01-01",
@@ -100,5 +114,5 @@ def test_latest_payload_has_latest_forecasts():
         history, "RELIANCE.NS", pd.Timestamp(dates[-1]).strftime("%Y-%m-%d")
     )
     assert payload["ticker"] == "RELIANCE.NS"
-    assert len(payload["forecasts"]) == 2
+    assert len(payload["forecasts"]) >= 2
     assert payload["latest_ohlc_date"] == pd.Timestamp(dates[-1]).strftime("%Y-%m-%d")
