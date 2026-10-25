@@ -11,8 +11,8 @@ The project uses historical data for Reliance Industries Limited (`RELIANCE.NS`)
 
 **[Launch PriceForecastLab](https://price-forecast-lab.streamlit.app/)** to explore the research interactively.
 
-- **Price Forecast:** review next-session price estimates from all models that completed, compare forecast disagreement, and inspect individual model diagnostics.
-- **Forecast tracking:** see scored predictions once the next observed session's actual close becomes available, compare model errors, and download the recent forecast log.
+- **Price Forecast:** view recent adjusted-OHLC candlesticks, the latest adjusted close, per-model next-session price estimates, and a chart comparing those estimates against the reference close.
+- **Forecast tracking:** inspect the live model leaderboard with MAE, RMSE, return bias and directional accuracy; once enough outcomes accumulate, view a rolling 20-forecast return-MAE chart and download the forecast log.
 - **Research Lab → Overview / Model comparison:** review fixed historical model results and classification metrics.
 - **Research Lab → Strategy backtest / Daily decisions:** explore historical cumulative-return and drawdown charts, transaction-cost scenarios, and saved daily decisions.
 
@@ -30,7 +30,7 @@ On a successful run, the workflow:
 4. Scores prior recorded forecasts when the next observed trading session is available.
 5. Attempts a focused suite of daily forecasts: Random Walk, Random Walk with Drift, ARIMA(1,1,1), Holt damped-trend exponential smoothing, Ridge Regression, Random Forest, Histogram Gradient Boosting, LSTM, and GRU.
 6. Builds an unweighted median-return ensemble from the models that successfully produce a forecast.
-7. Publishes the latest forecast JSON and dated forecast-history CSV to `dashboard/data/` for the hosted app.
+7. Publishes the latest forecast JSON, dated forecast-history CSV and a five-year adjusted-OHLC chart snapshot to `dashboard/data/` for the hosted app.
 
 Individual model failures are recorded in the latest forecast diagnostics; one unavailable model should not hide results from other models. The ensemble is a transparent baseline aggregation, not a proven or optimized trading strategy.
 
