@@ -903,10 +903,213 @@ def show_daily_positions(
 
 
 
+@st.cache_data(ttl=24 * 60 * 60, max_entries=2, show_spinner=False)
+def load_nifty500_universe() -> pd.DataFrame:
+    """Load the latest published Nifty 500 stock directory."""
+    path = REPORTS_DIR / "nifty500_universe.csv"
+    if not path.exists():
+        return pd.DataFrame([{
+            "company_name": "Reliance Industries Limited",
+            "symbol": "RELIANCE",
+            "ticker": "RELIANCE.NS",
+            "industry": "Energy",
+            "universe": "Fallback",
+            "fetched_at_utc": "",
+        }])
+
+    try:
+        universe = pd.read_csv(path)
+    except (OSError, pd.errors.ParserError) as exc:
+        raise ValueError(f"Could not read the Nifty 500 directory: {exc}") from exc
+
+    required = {"company_name", "symbol", "ticker"}
+    missing = sorted(required.difference(universe.columns))
+    if missing:
+        raise ValueError(f"The Nifty 500 directory is missing columns: {missing}")
+
+    for column in ("company_name", "symbol", "ticker"):
+        universe[column] = universe[column].fillna("").astype(str).str.strip()
+    universe = universe.loc[
+        universe["company_name"].ne("")
+        & universe["symbol"].ne("")
+        & universe["ticker"].ne("")
+    ].drop_duplicates(subset=["ticker"], keep="first")
+
+    if not universe["ticker"].str.endswith(".NS").all():
+        raise ValueError("The published universe contains a non-NSE Yahoo ticker.")
+    if len(universe) < 450:
+        raise ValueError(
+            f"The published directory contains only {len(universe)} rows, not a full Nifty 500 snapshot."
+        )
+    return universe.sort_values(["company_name", "symbol"]).reset_index(drop=True)
+
+
+@st.cache_data(ttl=60 * 60, max_entries=200, show_spinner=False)
+def fetch_ticker_history(ticker: str) -> pd.DataFrame:
+    """Fetch and validate recent auto-adjusted OHLC for one selected ticker."""
+    import yfinance as yf
+
+    raw = yf.download(
+        ticker,
+        period="7y",
+        interval="1d",
+        auto_adjust=True,
+        actions=False,
+        progress=False,
+        threads=False,
+        group_by="column",
+    )
+    if raw is None or raw.empty:
+        raise ValueError(
+            f"No daily OHLC was returned for {ticker}. The symbol may not map to Yahoo Finance, "
+            "or the provider may be temporarily unavailable."
+        )
+
+    if isinstance(raw.columns, pd.MultiIndex):
+        flattened = False
+        for level in range(raw.columns.nlevels):
+            labels = [str(value).strip().lower() for value in raw.columns.get_level_values(level)]
+            if "close" in labels and "open" in labels:
+                raw.columns = raw.columns.get_level_values(level)
+                flattened = True
+                break
+        if not flattened:
+            raw.columns = [
+                "_".join(str(piece) for piece in column if str(piece) not in {"", "None"})
+                for column in raw.columns.to_list()
+            ]
+
+    raw = raw.reset_index()
+    column_lookup = {
+        str(column).strip().lower().replace(" ", "_"): column
+        for column in raw.columns
+    }
+    date_col = next(
+        (column_lookup[name] for name in ("date", "datetime") if name in column_lookup),
+        None,
+    )
+    if date_col is None:
+        raise ValueError(f"Could not identify the date column returned for {ticker}.")
+
+    required_source = {
+        "open": ("open",),
+        "high": ("high",),
+        "low": ("low",),
+        "close": ("close",),
+        "volume": ("volume",),
+    }
+    selected = {"date": raw[date_col]}
+    for target_col, aliases in required_source.items():
+        source_col = next(
+            (column_lookup[alias] for alias in aliases if alias in column_lookup),
+            None,
+        )
+        if source_col is None:
+            raise ValueError(
+                f"Daily OHLC response for {ticker} is missing {target_col.upper()}."
+            )
+        selected[target_col] = raw[source_col]
+
+    data = pd.DataFrame(selected)
+    data["date"] = pd.to_datetime(data["date"], errors="coerce").dt.normalize()
+    for column in ["open", "high", "low", "close", "volume"]:
+        data[column] = pd.to_numeric(data[column], errors="coerce")
+    data = (
+        data.dropna(subset=["date", "open", "high", "low", "close", "volume"])
+        .sort_values("date")
+        .drop_duplicates("date", keep="last")
+        .reset_index(drop=True)
+    )
+    if len(data) < 756:
+        raise ValueError(
+            f"Only {len(data)} valid daily sessions were returned for {ticker}; "
+            "at least 756 are required for the current forecast models."
+        )
+
+    prices = data[["open", "high", "low", "close"]].to_numpy(dtype=float)
+    volumes = data["volume"].to_numpy(dtype=float)
+    if not np.isfinite(prices).all() or not np.isfinite(volumes).all():
+        raise ValueError(f"OHLC data for {ticker} contains non-finite values.")
+    if (prices <= 0).any() or (volumes < 0).any():
+        raise ValueError(f"OHLC data for {ticker} contains invalid price or volume values.")
+
+    latest_date = pd.Timestamp(data["date"].iloc[-1]).date()
+    age_days = (pd.Timestamp.now(tz="UTC").date() - latest_date).days
+    if age_days < 0:
+        raise ValueError(f"The latest OHLC date for {ticker} is in the future.")
+    if age_days > 7:
+        raise ValueError(
+            f"The latest OHLC date for {ticker} is {age_days} days old. "
+            "Refusing to produce a forecast from stale data."
+        )
+    return data.tail(1800).reset_index(drop=True)
+
+
+@st.cache_data(ttl=60 * 60, max_entries=100, show_spinner=False)
+def generate_on_demand_forecast(ticker: str) -> tuple[dict[str, object], pd.DataFrame]:
+    """Generate a non-persistent preview when a selected stock has no tracked forecast."""
+    from scripts.run_daily_forecast import (
+        build_price_history_snapshot,
+        make_daily_forecasts,
+    )
+
+    data = fetch_ticker_history(ticker)
+    generated_at = pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds")
+    forecast_rows = make_daily_forecasts(
+        data=data,
+        ticker=ticker,
+        generated_at_utc=generated_at,
+        research_start="2005-01-01",
+        include_deep_learning=False,
+    )
+    failures = forecast_rows.attrs.get("model_failures", [])
+    attempted = forecast_rows.attrs.get("models_attempted", [])
+    origin_date = pd.Timestamp(data["date"].iloc[-1]).strftime("%Y-%m-%d")
+    latest_close = float(data["close"].iloc[-1])
+
+    forecasts: list[dict[str, object]] = []
+    for _, row in forecast_rows.iterrows():
+        forecasts.append({
+            "model": str(row["model"]),
+            "input_close": float(row["input_close"]),
+            "predicted_next_log_return_bps": float(row["predicted_next_log_return_bps"]),
+            "predicted_next_close": float(row["predicted_next_close"]),
+            "generated_at_utc": str(row["generated_at_utc"]),
+            "target_date": None,
+            "actual_close": None,
+            "absolute_close_error": None,
+            "absolute_return_error_bps": None,
+            "direction_correct": None,
+        })
+
+    payload: dict[str, object] = {
+        "ticker": ticker,
+        "latest_ohlc_date": origin_date,
+        "forecast_origin_date": origin_date,
+        "generated_at_utc": generated_at,
+        "forecast_horizon": "next observed trading session",
+        "forecast_mode": "on_demand",
+        "model_scope": attempted,
+        "models_attempted": attempted,
+        "model_failures": failures,
+        "data_source": "Yahoo Finance via yfinance",
+        "price_adjustment": "auto_adjust=True",
+        "forecasts": forecasts,
+        "note": (
+            "On-demand research preview. These estimates are not yet part of the "
+            "persistent daily tracking ledger. Deep-learning models are only included "
+            "in scheduled forecasts where the dedicated forecast runner is configured for them."
+        ),
+    }
+    snapshot = build_price_history_snapshot(data)
+    return payload, snapshot
+
+
 def show_price_history_chart(
     ticker: str,
     latest_close: float,
     forecast_frame: pd.DataFrame,
+    price_history_snapshot: pd.DataFrame | None = None,
 ) -> None:
     """Show recent adjusted OHLC candles and a price-level comparison to forecasts."""
     name = safe_ticker_name(ticker)
@@ -915,17 +1118,19 @@ def show_price_history_chart(
         '<div class="pfl-section-label">Stock price history</div>',
         unsafe_allow_html=True,
     )
-    if not history_path.exists():
+    if price_history_snapshot is not None:
+        price_history = price_history_snapshot.copy()
+    elif history_path.exists():
+        try:
+            price_history = pd.read_csv(history_path)
+        except (OSError, pd.errors.ParserError) as exc:
+            st.warning(f"Could not load the price-history snapshot: {exc}")
+            return
+    else:
         st.info(
-            "The daily OHLC snapshot is not published yet. The next successful "
-            "daily workflow will add the recent price-history chart."
+            "No saved OHLC snapshot exists for this ticker. Select a supported Nifty 500 "
+            "stock to fetch and validate its recent daily history on demand."
         )
-        return
-
-    try:
-        price_history = pd.read_csv(history_path)
-    except (OSError, pd.errors.ParserError) as exc:
-        st.warning(f"Could not load the price-history snapshot: {exc}")
         return
 
     required = {"date", "open", "high", "low", "close", "volume"}
@@ -1085,30 +1290,30 @@ def show_latest_forecast(ticker: str) -> None:
     latest_path = REPORTS_DIR / f"latest_forecast_{name}.json"
     history_path = REPORTS_DIR / f"daily_forecast_history_{name}.csv"
 
-    if not latest_path.exists():
-        st.warning(
-            "No automated daily forecast has been published for this ticker yet."
-        )
-        st.markdown(
-            "[Open the daily forecast workflow on GitHub]"
-            "(https://github.com/avgphoenixguy/stock-forecast-backtesting-lab/actions/workflows/daily-forecast.yml)"
-        )
-        st.write(
-            "Run the scheduled multi-model workflow manually using **Run workflow**. "
-            "It refreshes and validates daily OHLC, attempts the configured model suite, "
-            "and publishes the latest successful forecasts. If the run fails, open the "
-            "workflow log before trusting any previously displayed forecast."
-        )
-        st.caption(
-            "The app will show a new forecast only after a successful workflow run."
-        )
-        return
+    on_demand_price_history: pd.DataFrame | None = None
+    forecast_is_on_demand = not latest_path.exists()
 
-    try:
-        payload = json.loads(latest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        st.error(f"Could not read the latest forecast file: {exc}")
-        return
+    if forecast_is_on_demand:
+        try:
+            with st.spinner(f"Fetching validated daily OHLC and fitting models for {ticker}..."):
+                payload, on_demand_price_history = generate_on_demand_forecast(ticker)
+        except Exception as exc:
+            st.error(f"Could not generate an on-demand forecast for {ticker}: {exc}")
+            st.info(
+                "This stock remains searchable even if the market-data provider does not "
+                "support its symbol. Try again later or check the ticker mapping."
+            )
+            st.markdown(
+                "[View the Nifty 500 daily workflow]"
+                "(https://github.com/avgphoenixguy/stock-forecast-backtesting-lab/actions/workflows/daily-forecast.yml)"
+            )
+            return
+    else:
+        try:
+            payload = json.loads(latest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            st.error(f"Could not read the latest forecast file: {exc}")
+            return
 
     if payload.get("ticker") != ticker:
         st.warning(
@@ -1142,7 +1347,7 @@ def show_latest_forecast(ticker: str) -> None:
               recorded after the next completed session.
             </div>
           </div>
-          <div class="pfl-forecast-status"><span class="pfl-forecast-dot"></span> LATEST PUBLISHED RUN</div>
+          <div class="pfl-forecast-status"><span class="pfl-forecast-dot"></span> {("ON-DEMAND PREVIEW" if forecast_is_on_demand else "LATEST PUBLISHED RUN")}</div>
         </section>
         <div class="pfl-forecast-meta">
           <span><strong>Data session</strong> · {session_display}</span>
@@ -1208,7 +1413,12 @@ def show_latest_forecast(ticker: str) -> None:
         c2.metric("Latest OHLC session", str(latest_ohlc_date))
         c3.metric("Successful model forecasts", f"{len(forecast_frame)}")
 
-        show_price_history_chart(ticker, latest_close, forecast_frame)
+        show_price_history_chart(
+            ticker,
+            latest_close,
+            forecast_frame,
+            price_history_snapshot=on_demand_price_history,
+        )
 
         st.markdown('<div class="pfl-section-label">Forecast disagreement</div>', unsafe_allow_html=True)
         plot_data = forecast_frame.sort_values("predicted_return_pct", ascending=True)
@@ -1311,7 +1521,14 @@ def show_latest_forecast(ticker: str) -> None:
 
     st.subheader("Historical forecast log")
     if not history_path.exists():
-        st.info("Forecast history has not been created yet.")
+        if forecast_is_on_demand:
+            st.info(
+                "This is an on-demand preview, not a persistent daily-tracked forecast. "
+                "Its next-session outcome is not yet included in the cross-model leaderboard. "
+                "Reliance Industries is the first stock with automated, saved forecast history."
+            )
+        else:
+            st.info("Forecast history has not been created yet.")
         return
 
     try:
@@ -1591,11 +1808,6 @@ def main() -> None:
         """,
         unsafe_allow_html=True,
     )
-    st.sidebar.markdown("**TRACKED INSTRUMENT**")
-    st.sidebar.markdown("Reliance Industries")
-    st.sidebar.caption("NSE · RELIANCE.NS · Daily adjusted OHLC")
-    st.sidebar.divider()
-
     workspace = st.sidebar.radio(
         "Workspace",
         ["Price Forecast", "Research Lab"],
@@ -1613,7 +1825,57 @@ def main() -> None:
     )
 
     if workspace == "Price Forecast":
-        show_latest_forecast(DEFAULT_TICKER)
+        universe = load_nifty500_universe()
+        is_fallback_universe = (
+            universe.empty
+            or universe.get("universe", pd.Series(dtype=str)).eq("Fallback").all()
+        )
+        if is_fallback_universe:
+            st.sidebar.warning(
+                "The Nifty 500 directory is being initialized. Reliance is temporarily available."
+            )
+        else:
+            fetched_at_values = universe.get(
+                "fetched_at_utc", pd.Series(dtype=str)
+            ).dropna()
+            fetched_at = str(fetched_at_values.iloc[0]) if not fetched_at_values.empty else "unknown"
+            st.sidebar.caption(
+                f"Nifty 500 directory · {len(universe):,} constituents · refreshed {fetched_at}"
+            )
+
+        ticker_to_label = {
+            str(row["ticker"]): (
+                f"{row['company_name']} · {row['symbol']}"
+                + (f" · {row['industry']}" if str(row.get("industry", "")).strip() else "")
+            )
+            for _, row in universe.iterrows()
+        }
+        ticker_options = list(ticker_to_label)
+        default_index = (
+            ticker_options.index(DEFAULT_TICKER)
+            if DEFAULT_TICKER in ticker_options else 0
+        )
+        st.sidebar.markdown("**SEARCH NIFTY 500**")
+        selected_ticker = st.sidebar.selectbox(
+            "Company or ticker",
+            options=ticker_options,
+            index=default_index,
+            format_func=lambda value: ticker_to_label.get(value, value),
+            key="nifty500_ticker_selector",
+            help="Type a company name or NSE symbol to filter the Nifty 500 directory.",
+        )
+        selected_row = universe.loc[universe["ticker"] == selected_ticker].iloc[0]
+        industry = str(selected_row.get("industry", "")).strip()
+        st.sidebar.caption(
+            f"Selected: {selected_row['symbol']} · NSE"
+            + (f" · {industry}" if industry else "")
+        )
+        if is_fallback_universe:
+            st.caption(
+                "The full Nifty 500 list has not been published yet. "
+                "Run the daily forecast workflow to refresh the official directory."
+            )
+        show_latest_forecast(selected_ticker)
         st.markdown(
             '<div class="pfl-small-note">Educational research only · '
             'Historical results do not establish future performance.</div>',
@@ -1622,6 +1884,9 @@ def main() -> None:
         render_signature_footer()
         return
 
+    st.sidebar.markdown("**RESEARCH INSTRUMENT**")
+    st.sidebar.markdown("Reliance Industries")
+    st.sidebar.caption("NSE · RELIANCE.NS · Fixed historical research reports")
     st.title("Research Lab")
     st.caption(
         "Historical experiments and diagnostics. The documented comparison "
