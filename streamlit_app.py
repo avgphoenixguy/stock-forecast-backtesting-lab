@@ -1273,9 +1273,9 @@ def show_latest_forecast(ticker: str) -> None:
           <div class="pfl-kicker">DAILY QUANTITATIVE RESEARCH · NSE EQUITIES</div>
           <div class="pfl-hero-title">PriceForecast<span>Lab</span></div>
           <div class="pfl-hero-copy">
-            A transparent forecast board combining econometric baselines, machine-learning
-            models and recurrent networks. Track the latest estimates, then measure them
-            against the next completed session.
+            Compare next-session stock-price estimates from econometric and machine-learning
+            models. Tracked stocks also include recurrent-network outputs; other Nifty 500
+            constituents can be previewed on demand and validated against future closes later.
           </div>
           <div class="pfl-chip-row">
             <span class="pfl-chip">End-of-day adjusted OHLC</span>
@@ -1820,8 +1820,9 @@ def main() -> None:
 
     st.sidebar.divider()
     st.sidebar.caption(
-        "Daily data and forecast updates are produced by GitHub Actions. "
-        "This app displays published outputs; it does not place trades."
+        "The Nifty 500 directory is refreshed by GitHub Actions. Reliance has persistent "
+        "daily model tracking; other selected stocks can generate cached on-demand previews. "
+        "No trades are placed."
     )
 
     if workspace == "Price Forecast":
