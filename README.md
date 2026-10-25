@@ -18,6 +18,22 @@ The project uses historical data for Reliance Industries Limited (`RELIANCE.NS`)
 
 The dashboard uses bundled, previously generated research results. It does not download live prices, retrain models, or place trades. Transaction-cost settings are illustrative assumptions and change estimated strategy results; they do not change forecast-error metrics.
 
+## Automated Daily Forecasts
+
+A GitHub Actions workflow is configured in `.github/workflows/daily-forecast.yml`. It is scheduled for weekdays at approximately **8:00 PM India Standard Time** and can also be started manually from the repository's **Actions** tab.
+
+On a successful run, the workflow:
+
+1. Runs the project test suite.
+2. Downloads and validates the latest available daily adjusted OHLC history for `RELIANCE.NS`.
+3. Scores prior recorded baseline forecasts when a later trading session is available.
+4. Creates next-session **Random Walk** and **Random Walk with Drift** forecasts.
+5. Publishes the small latest-forecast JSON and forecast-history CSV back to `dashboard/data/` so the hosted app can display them.
+
+The data provider is Yahoo Finance accessed through `yfinance`. Data availability and scheduled GitHub Actions execution are not guaranteed at an exact time. The workflow rejects stale data rather than intentionally generating a new forecast from a dataset older than its configured freshness limit. Check the Actions run history for success or failure.
+
+**Current scope:** this daily pipeline uses only the two simple baseline models. LSTM and GRU have not yet been implemented. The existing multi-model backtest and comparison tables remain the documented historical experiment ending June 14, 2022; this daily workflow does not automatically extend or replace that historical backtest. Daily forecasts are research records, not trading signals or guarantees of performance.
+
 **Research conclusion:** The tested machine-learning models did not outperform the Random Walk benchmark on overall return forecast errors. The initial forecast-driven trading rule also performed poorly after costs. These negative results are documented rather than presented as a successful trading system.
 
 ## Project Overview
