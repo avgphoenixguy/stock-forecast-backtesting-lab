@@ -6,3 +6,5 @@ streamlit>=1.50
 matplotlib>=3.9
 plotly>=6.0
 pytest>=8.0
+requests>=2.32
+statsmodels>=0.14.5,<0.15
