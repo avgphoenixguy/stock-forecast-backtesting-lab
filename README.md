@@ -11,12 +11,12 @@ The project uses historical data for Reliance Industries Limited (`RELIANCE.NS`)
 
 **[Launch PriceForecastLab](https://price-forecast-lab.streamlit.app/)** to explore the research interactively.
 
-- **Overview:** review headline results and forecast-error comparisons.
-- **Forecast comparison:** compare regression and direction-classification metrics.
-- **Strategy backtest:** explore cumulative net-return and drawdown charts and change the assumed transaction cost per side.
-- **Daily positions:** inspect historical model decisions and download the displayed rows as a CSV.
+- **Price Forecast:** review next-session price estimates from all models that completed, compare forecast disagreement, and inspect individual model diagnostics.
+- **Forecast tracking:** see scored predictions once the next observed session's actual close becomes available, compare model errors, and download the recent forecast log.
+- **Research Lab → Overview / Model comparison:** review fixed historical model results and classification metrics.
+- **Research Lab → Strategy backtest / Daily decisions:** explore historical cumulative-return and drawdown charts, transaction-cost scenarios, and saved daily decisions.
 
-The dashboard uses bundled, previously generated research results. It does not download live prices, retrain models, or place trades. Transaction-cost settings are illustrative assumptions and change estimated strategy results; they do not change forecast-error metrics.
+The public app is forecast-first. It displays the latest forecast output published by GitHub Actions from validated daily adjusted OHLC, and separates that product view from the historical **Research Lab**. The browser does not download prices or fit models on each page load, and no trades are placed. Transaction-cost settings apply only to historical strategy estimates; they do not change price forecasts or forecast-error metrics.
 
 ## Automated Daily Forecasts
 
@@ -25,14 +25,18 @@ A GitHub Actions workflow is configured in `.github/workflows/daily-forecast.yml
 On a successful run, the workflow:
 
 1. Runs the project test suite.
-2. Downloads and validates the latest available daily adjusted OHLC history for `RELIANCE.NS`.
-3. Scores prior recorded baseline forecasts when a later trading session is available.
-4. Creates next-session **Random Walk** and **Random Walk with Drift** forecasts.
-5. Publishes the small latest-forecast JSON and forecast-history CSV back to `dashboard/data/` so the hosted app can display them.
+2. Installs the separate forecasting dependencies in `requirements-forecast.txt`, including statsmodels and TensorFlow CPU.
+3. Downloads and validates the latest available daily adjusted OHLC history for `RELIANCE.NS`.
+4. Scores prior recorded forecasts when the next observed trading session is available.
+5. Attempts a focused suite of daily forecasts: Random Walk, Random Walk with Drift, ARIMA(1,1,1), Holt damped-trend exponential smoothing, Ridge Regression, Random Forest, Histogram Gradient Boosting, LSTM, and GRU.
+6. Builds an unweighted median-return ensemble from the models that successfully produce a forecast.
+7. Publishes the latest forecast JSON and dated forecast-history CSV to `dashboard/data/` for the hosted app.
+
+Individual model failures are recorded in the latest forecast diagnostics; one unavailable model should not hide results from other models. The ensemble is a transparent baseline aggregation, not a proven or optimized trading strategy.
 
 The data provider is Yahoo Finance accessed through `yfinance`. Data availability and scheduled GitHub Actions execution are not guaranteed at an exact time. The workflow rejects stale data rather than intentionally generating a new forecast from a dataset older than its configured freshness limit. Check the Actions run history for success or failure.
 
-**Current scope:** this daily pipeline uses only the two simple baseline models. LSTM and GRU have not yet been implemented. The existing multi-model backtest and comparison tables remain the documented historical experiment ending June 14, 2022; this daily workflow does not automatically extend or replace that historical backtest. Daily forecasts are research records, not trading signals or guarantees of performance.
+**Daily forecast scope:** the scheduled workflow attempts the models listed above, but the live page only displays models that succeed on a particular run. LSTM/GRU runs use modest fixed architectures and need their own rolling walk-forward evaluation before they should be interpreted as competitive models. The historical multi-model backtest and comparison tables remain the documented development experiment ending June 14, 2022; the daily process does not silently extend or replace that experiment. Daily forecasts are research records, not trading signals or guarantees of performance.
 
 **Research conclusion:** The tested machine-learning models did not outperform the Random Walk benchmark on overall return forecast errors. The initial forecast-driven trading rule also performed poorly after costs. These negative results are documented rather than presented as a successful trading system.
 
@@ -42,6 +46,10 @@ The research pipeline covers:
 
 - Historical stock-price acquisition and data validation.
 - Random Walk and Random Walk with Drift benchmarks.
+- ARIMA(1,1,1) and Holt damped-trend exponential smoothing for econometric baselines.
+- Ridge Regression, Random Forest and Histogram Gradient Boosting for next-session returns.
+- LSTM and GRU recurrent neural networks in the scheduled daily forecast job.
+- A transparent median-return ensemble over successful models.
 - Logistic Regression for next-day price direction.
 - Ridge Regression for next-day log-return forecasts.
 - Ridge feature ablation across returns, trend, and volatility.
