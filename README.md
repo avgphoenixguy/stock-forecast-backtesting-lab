@@ -1,9 +1,22 @@
 
-# Stock Forecast & Backtesting Lab
+# PriceForecastLab — Stock Forecast & Backtesting Lab
+
+[![Open Live Dashboard](https://img.shields.io/badge/Launch-Live%20Dashboard-FF4B4B?logo=streamlit&logoColor=white)](https://price-forecast-lab.streamlit.app/) [![View Source on GitHub](https://img.shields.io/badge/Source-GitHub-181717?logo=github&logoColor=white)](https://github.com/avgphoenixguy/stock-forecast-backtesting-lab)
 
 A Python-based quantitative research project investigating whether machine learning can improve next-day stock return forecasts and whether forecast-driven trading strategies can outperform simple benchmarks after transaction costs.
 
 The project uses historical data for Reliance Industries Limited (`RELIANCE.NS`), with chronological walk-forward validation, baseline comparisons, feature experiments, and an exploratory trading-strategy backtest.
+
+## Live Dashboard
+
+**[Launch PriceForecastLab](https://price-forecast-lab.streamlit.app/)** to explore the research interactively.
+
+- **Overview:** review headline results and forecast-error comparisons.
+- **Forecast comparison:** compare regression and direction-classification metrics.
+- **Strategy backtest:** explore cumulative net-return and drawdown charts and change the assumed transaction cost per side.
+- **Daily positions:** inspect historical model decisions and download the displayed rows as a CSV.
+
+The dashboard uses bundled, previously generated research results. It does not download live prices, retrain models, or place trades. Transaction-cost settings are illustrative assumptions and change estimated strategy results; they do not change forecast-error metrics.
 
 **Research conclusion:** The tested machine-learning models did not outperform the Random Walk benchmark on overall return forecast errors. The initial forecast-driven trading rule also performed poorly after costs. These negative results are documented rather than presented as a successful trading system.
 
