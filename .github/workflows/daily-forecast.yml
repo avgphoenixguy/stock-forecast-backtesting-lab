@@ -65,5 +65,9 @@ jobs:
             echo "No new market session or forecast history changes; nothing to commit."
           else
             git commit -m "Update daily RELIANCE forecast history"
+            # The app or README may be updated while this job is running.
+            # Rebase the generated data commit onto the latest main before pushing.
+            git fetch origin main
+            git rebase origin/main
             git push origin HEAD:main
           fi
