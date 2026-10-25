@@ -5,6 +5,7 @@ import pandas as pd
 from scripts.run_daily_forecast import (
     HISTORY_COLUMNS,
     build_latest_payload,
+    build_price_history_snapshot,
     empty_history,
     make_daily_forecasts,
     score_pending_forecasts,
@@ -116,3 +117,34 @@ def test_latest_payload_has_latest_forecasts():
     assert payload["ticker"] == "RELIANCE.NS"
     assert len(payload["forecasts"]) >= 2
     assert payload["latest_ohlc_date"] == pd.Timestamp(dates[-1]).strftime("%Y-%m-%d")
+
+
+
+def test_price_history_snapshot_is_recent_sorted_and_complete():
+    dates = pd.bdate_range("2020-01-01", periods=1300)
+    closes = 100.0 * np.exp(np.linspace(0.0, 0.2, len(dates)))
+    market = sample_market(closes)
+    market["date"] = dates
+
+    snapshot = build_price_history_snapshot(market, observations=1260)
+
+    assert len(snapshot) == 1260
+    assert list(snapshot.columns) == [
+        "date", "open", "high", "low", "close", "volume"
+    ]
+    assert snapshot["date"].is_monotonic_increasing
+    assert snapshot["date"].iloc[0] == dates[-1260].strftime("%Y-%m-%d")
+    assert snapshot["date"].iloc[-1] == dates[-1].strftime("%Y-%m-%d")
+    assert np.isfinite(snapshot[["open", "high", "low", "close", "volume"]].to_numpy()).all()
+
+
+def test_price_history_snapshot_rejects_duplicate_dates():
+    market = sample_market([100.0, 101.0, 102.0])
+    market.loc[1, "date"] = market.loc[0, "date"]
+
+    try:
+        build_price_history_snapshot(market)
+    except ValueError as exc:
+        assert "duplicate" in str(exc).lower()
+    else:
+        raise AssertionError("Expected duplicate OHLC dates to be rejected.")
