@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 
@@ -902,6 +903,163 @@ def show_daily_positions(
 
 
 
+def show_price_history_chart(
+    ticker: str,
+    latest_close: float,
+    forecast_frame: pd.DataFrame,
+) -> None:
+    """Show recent adjusted OHLC candles and a price-level comparison to forecasts."""
+    name = safe_ticker_name(ticker)
+    history_path = REPORTS_DIR / f"price_history_{name}.csv"
+    st.markdown(
+        '<div class="pfl-section-label">Stock price history</div>',
+        unsafe_allow_html=True,
+    )
+    if not history_path.exists():
+        st.info(
+            "The daily OHLC snapshot is not published yet. The next successful "
+            "daily workflow will add the recent price-history chart."
+        )
+        return
+
+    try:
+        price_history = pd.read_csv(history_path)
+    except (OSError, pd.errors.ParserError) as exc:
+        st.warning(f"Could not load the price-history snapshot: {exc}")
+        return
+
+    required = {"date", "open", "high", "low", "close", "volume"}
+    missing = sorted(required.difference(price_history.columns))
+    if missing:
+        st.warning(f"The price-history snapshot is missing columns: {missing}")
+        return
+
+    price_history["date"] = pd.to_datetime(price_history["date"], errors="coerce")
+    for column in ["open", "high", "low", "close", "volume"]:
+        price_history[column] = pd.to_numeric(price_history[column], errors="coerce")
+    price_history = (
+        price_history.dropna(subset=["date", "open", "high", "low", "close"])
+        .sort_values("date")
+        .drop_duplicates("date", keep="last")
+    )
+    if price_history.empty:
+        st.info("No valid daily OHLC observations are available for the chart.")
+        return
+
+    range_label = st.selectbox(
+        "Chart period",
+        options=["3 months", "6 months", "1 year", "3 years", "5 years"],
+        index=2,
+        key="price_history_period",
+    )
+    months_by_label = {
+        "3 months": 3,
+        "6 months": 6,
+        "1 year": 12,
+        "3 years": 36,
+        "5 years": 60,
+    }
+    last_date = price_history["date"].max()
+    cutoff = last_date - pd.DateOffset(months=months_by_label[range_label])
+    visible = price_history.loc[price_history["date"] >= cutoff].copy()
+
+    fig = go.Figure(
+        data=[
+            go.Candlestick(
+                x=visible["date"],
+                open=visible["open"],
+                high=visible["high"],
+                low=visible["low"],
+                close=visible["close"],
+                name="Adjusted OHLC",
+                increasing_line_color="#53E0C1",
+                decreasing_line_color="#FF7F9E",
+                increasing_fillcolor="rgba(83,224,193,0.50)",
+                decreasing_fillcolor="rgba(255,127,158,0.42)",
+                whiskerwidth=0.5,
+            )
+        ]
+    )
+    fig.add_hline(
+        y=latest_close,
+        line_dash="dot",
+        line_color="#7AB5FF",
+        annotation_text=f"Latest adjusted close ₹{latest_close:,.2f}",
+        annotation_position="top left",
+    )
+    fig.update_layout(
+        title=f"{ticker} · Adjusted daily price history",
+        xaxis_title="Trading session",
+        yaxis_title="Adjusted price (₹)",
+        height=450,
+        margin=dict(l=12, r=18, t=60, b=12),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#D8E5F3"),
+        xaxis_rangeslider_visible=False,
+        hovermode="x unified",
+    )
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+    st.caption(
+        f"Showing {len(visible):,} sessions through {last_date.strftime('%d %b %Y')}. "
+        "Prices are auto-adjusted OHLC from Yahoo Finance via yfinance—not a live quote."
+    )
+
+    if forecast_frame.empty:
+        return
+
+    comparison = forecast_frame[
+        ["model_label", "predicted_next_close", "predicted_next_log_return_bps"]
+    ].copy()
+    comparison["predicted_next_close"] = pd.to_numeric(
+        comparison["predicted_next_close"], errors="coerce"
+    )
+    comparison = comparison.dropna(subset=["predicted_next_close"])
+    if comparison.empty:
+        return
+
+    st.markdown(
+        '<div class="pfl-section-label">Last close vs. predicted next close</div>',
+        unsafe_allow_html=True,
+    )
+    low = min(float(latest_close), float(comparison["predicted_next_close"].min()))
+    high = max(float(latest_close), float(comparison["predicted_next_close"].max()))
+    spread = max(high - low, latest_close * 0.001, 0.5)
+    fig = px.scatter(
+        comparison.sort_values("predicted_next_close"),
+        x="predicted_next_close",
+        y="model_label",
+        color="model_label",
+        labels={
+            "predicted_next_close": "Predicted next adjusted close (₹)",
+            "model_label": "Model",
+            "color": "Model",
+        },
+        hover_data={
+            "predicted_next_log_return_bps": ":.2f",
+            "predicted_next_close": ":.2f",
+        },
+        title="Each point is a model's next-session price estimate",
+    )
+    fig.add_vline(
+        x=latest_close,
+        line_dash="dash",
+        line_color="#7AB5FF",
+        annotation_text=f"Reference close ₹{latest_close:,.2f}",
+        annotation_position="top",
+    )
+    fig.update_xaxes(range=[low - spread * 0.35, high + spread * 0.35])
+    fig.update_layout(
+        showlegend=False,
+        height=max(290, 40 * len(comparison)),
+        margin=dict(l=12, r=20, t=70, b=16),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#D8E5F3"),
+    )
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+
 def show_latest_forecast(ticker: str) -> None:
     """Display the most recent automated forecast and scored forecast history."""
     st.markdown(
@@ -1042,9 +1200,15 @@ def show_latest_forecast(ticker: str) -> None:
         first_forecast = forecast_frame.iloc[0]
         latest_close = float(forecast_frame["input_close"].dropna().iloc[0])
         c1, c2, c3 = st.columns(3)
-        c1.metric("Last adjusted close", f"₹{latest_close:,.2f}")
+        c1.metric(
+            "Reference price · latest adjusted close",
+            f"₹{latest_close:,.2f}",
+            help="Most recent adjusted close in the validated daily data, not an intraday live quote.",
+        )
         c2.metric("Latest OHLC session", str(latest_ohlc_date))
-        c3.metric("Successful forecasts", f"{len(forecast_frame)}")
+        c3.metric("Successful model forecasts", f"{len(forecast_frame)}")
+
+        show_price_history_chart(ticker, latest_close, forecast_frame)
 
         st.markdown('<div class="pfl-section-label">Forecast disagreement</div>', unsafe_allow_html=True)
         plot_data = forecast_frame.sort_values("predicted_return_pct", ascending=True)
@@ -1177,13 +1341,27 @@ def show_latest_forecast(ticker: str) -> None:
         )
         return
 
-    st.markdown('<div class="pfl-section-label">Performance since live tracking began</div>', unsafe_allow_html=True)
+    st.markdown('<div class="pfl-section-label">Live model leaderboard</div>', unsafe_allow_html=True)
+    st.caption(
+        "Scores are based only on forecasts that have reached a subsequent observed session. "
+        "The sample begins when live tracking started; the table is descriptive, not a model-selection guarantee."
+    )
+
+    scored["signed_return_error_bps"] = (
+        pd.to_numeric(scored["predicted_next_log_return_bps"], errors="coerce")
+        - pd.to_numeric(scored["actual_log_return_bps"], errors="coerce")
+    )
     performance = (
         scored.groupby("model", dropna=True)
         .agg(
             scored_forecasts=("target_date", "count"),
             close_mae=("absolute_close_error", "mean"),
             return_mae_bps=("absolute_return_error_bps", "mean"),
+            return_rmse_bps=(
+                "signed_return_error_bps",
+                lambda values: float(np.sqrt(np.nanmean(np.square(values)))),
+            ),
+            mean_return_error_bps=("signed_return_error_bps", "mean"),
             direction_accuracy_pct=(
                 "direction_correct",
                 lambda values: float(values.mean() * 100.0) if values.notna().any() else np.nan,
@@ -1192,25 +1370,94 @@ def show_latest_forecast(ticker: str) -> None:
         .reset_index()
         .sort_values("return_mae_bps", na_position="last")
     )
-    performance["model"] = performance["model"].map(
+    performance["model_label"] = performance["model"].map(
         lambda model: FORECAST_MODEL_LABELS.get(str(model), format_model_label(str(model)))
     )
+
+    accuracy_chart = performance.dropna(subset=["return_mae_bps"]).sort_values("return_mae_bps")
+    if not accuracy_chart.empty:
+        fig = px.bar(
+            accuracy_chart,
+            x="return_mae_bps",
+            y="model_label",
+            orientation="h",
+            labels={
+                "return_mae_bps": "Mean absolute log-return error (bps)",
+                "model_label": "Model",
+            },
+            title="Live return MAE by model · lower is better",
+            hover_data={
+                "scored_forecasts": True,
+                "return_rmse_bps": ":.2f",
+                "mean_return_error_bps": ":.2f",
+            },
+        )
+        fig.update_layout(
+            height=max(300, 40 * len(accuracy_chart)),
+            margin=dict(l=12, r=18, t=58, b=16),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#D8E5F3"),
+        )
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
     st.dataframe(
-        performance.rename(columns={
-            "model": "Model",
+        performance[[
+            "model_label", "scored_forecasts", "close_mae", "return_mae_bps",
+            "return_rmse_bps", "mean_return_error_bps", "direction_accuracy_pct",
+        ]].rename(columns={
+            "model_label": "Model",
             "scored_forecasts": "Scored forecasts",
             "close_mae": "Close MAE (₹)",
             "return_mae_bps": "Return MAE (bps)",
+            "return_rmse_bps": "Return RMSE (bps)",
+            "mean_return_error_bps": "Mean return error (bps)",
             "direction_accuracy_pct": "Direction accuracy (%)",
         }),
         width="stretch",
         hide_index=True,
     )
-    st.caption(
-        "This scorecard uses only forecasts recorded since automated tracking began. "
-        "Early samples are small; do not treat the current ranking as a reliable model winner."
-    )
 
+    rolling = scored.sort_values("target_date").copy()
+    rolling["rolling_return_mae_bps"] = (
+        rolling.groupby("model")["absolute_return_error_bps"]
+        .transform(lambda values: values.rolling(window=20, min_periods=5).mean())
+    )
+    rolling_visible = rolling.dropna(subset=["rolling_return_mae_bps"]).copy()
+    st.markdown(
+        '<div class="pfl-section-label">Rolling forecast accuracy</div>',
+        unsafe_allow_html=True,
+    )
+    if rolling_visible.empty:
+        st.info(
+            "Rolling MAE charts will appear after each model has at least five scored "
+            "forecasts. Until then, the live leaderboard above is an early-sample preview."
+        )
+    else:
+        rolling_visible["model_label"] = rolling_visible["model"].map(
+            lambda model: FORECAST_MODEL_LABELS.get(str(model), format_model_label(str(model)))
+        )
+        fig = px.line(
+            rolling_visible,
+            x="target_date",
+            y="rolling_return_mae_bps",
+            color="model_label",
+            markers=True,
+            labels={
+                "target_date": "Scored target session",
+                "rolling_return_mae_bps": "Rolling 20-forecast MAE (bps)",
+                "model_label": "Model",
+            },
+            title="Rolling return MAE · lower is better",
+        )
+        fig.update_layout(
+            height=400,
+            margin=dict(l=12, r=18, t=58, b=16),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#D8E5F3"),
+        )
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     models = sorted(scored["model"].dropna().unique().tolist())
     selected_model = st.selectbox(
         "Model in historical chart",
