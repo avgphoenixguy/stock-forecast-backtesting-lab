@@ -115,6 +115,35 @@ p, li, label { line-height: 1.55; }
 }
 .pfl-section-label { color: var(--pfl-muted); font-size: 11px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase; margin: 22px 0 10px; }
 .pfl-small-note { color: var(--pfl-muted); font-size: 12px; }
+.pfl-forecast-head {
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 22px;
+  padding: 22px 24px; margin: 22px 0 14px;
+  border-radius: 19px; border: 1px solid rgba(122, 181, 255, 0.22);
+  background: linear-gradient(115deg, rgba(18, 34, 53, 0.96), rgba(14, 28, 42, 0.92));
+}
+.pfl-forecast-title {
+  color: #f4f8fd; font-size: clamp(1.7rem, 3vw, 2.25rem);
+  line-height: 1.1; font-weight: 820; letter-spacing: -1.4px;
+}
+.pfl-forecast-copy {
+  color: #a8bbd0; font-size: 14px; line-height: 1.55;
+  max-width: 760px; margin-top: 9px;
+}
+.pfl-forecast-status {
+  display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+  padding: 9px 12px; border: 1px solid rgba(83, 224, 193, 0.22);
+  background: rgba(83, 224, 193, 0.08); border-radius: 999px;
+  color: #a6f3df; font-size: 11px; font-weight: 750; letter-spacing: 0.3px;
+}
+.pfl-forecast-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #53e0c1; box-shadow: 0 0 0 4px rgba(83, 224, 193, 0.12);
+}
+.pfl-forecast-meta {
+  display: flex; flex-wrap: wrap; gap: 9px 22px;
+  padding: 0 4px 12px; color: #91a6bd; font-size: 12px;
+}
+.pfl-forecast-meta strong { color: #dce8f5; font-weight: 650; }
 .pfl-footer {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
   gap: 8px; margin-top: 42px; padding: 20px 10px 8px;
@@ -149,6 +178,9 @@ hr { border-color: var(--pfl-line); }
   .main .block-container { padding: 1rem 0.8rem 2rem; }
   .pfl-hero { padding: 23px 20px; border-radius: 20px; }
   .pfl-hero-title { letter-spacing: -1.5px; }
+  .pfl-forecast-head { flex-direction: column; align-items: flex-start; padding: 19px; gap: 14px; }
+  .pfl-forecast-title { letter-spacing: -0.8px; }
+  .pfl-forecast-meta { gap: 7px 14px; }
 }
 </style>
 """
@@ -891,12 +923,6 @@ def show_latest_forecast(ticker: str) -> None:
         """,
         unsafe_allow_html=True,
     )
-    st.subheader("Next-session forecast")
-    st.caption(
-        "These are experimental price estimates—not trading signals. "
-        "Models can disagree or fail, and no model has established a reliable economic edge."
-    )
-
     name = safe_ticker_name(ticker)
     latest_path = REPORTS_DIR / f"latest_forecast_{name}.json"
     history_path = REPORTS_DIR / f"daily_forecast_history_{name}.csv"
@@ -937,17 +963,52 @@ def show_latest_forecast(ticker: str) -> None:
     origin_date = payload.get("forecast_origin_date", "Unknown")
     generated_at = payload.get("generated_at_utc", "Unknown")
 
-    st.caption(
-        f"Forecast generated at (UTC): {generated_at} · "
-        f"Source: {payload.get('data_source', 'not specified')} · "
-        f"Price convention: {payload.get('price_adjustment', 'not specified')}"
+    try:
+        generated_display = pd.to_datetime(generated_at, utc=True).strftime("%d %b %Y · %H:%M UTC")
+    except (ValueError, TypeError):
+        generated_display = str(generated_at)
+    try:
+        session_display = pd.to_datetime(latest_ohlc_date).strftime("%d %b %Y")
+    except (ValueError, TypeError):
+        session_display = str(latest_ohlc_date)
+
+    st.markdown(
+        f"""
+        <section class="pfl-forecast-head">
+          <div>
+            <div class="pfl-kicker">FORECAST SNAPSHOT · {session_display}</div>
+            <div class="pfl-forecast-title">Next-session outlook</div>
+            <div class="pfl-forecast-copy">
+              Compare one-session price estimates across econometric baselines,
+              machine-learning models and recurrent networks. Actual accuracy is
+              recorded after the next completed session.
+            </div>
+          </div>
+          <div class="pfl-forecast-status"><span class="pfl-forecast-dot"></span> LATEST PUBLISHED RUN</div>
+        </section>
+        <div class="pfl-forecast-meta">
+          <span><strong>Data session</strong> · {session_display}</span>
+          <span><strong>Forecast published</strong> · {generated_display}</span>
+          <span><strong>Source</strong> · {payload.get('data_source', 'not specified')}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    st.info(
-        "Forecast horizon: the next observed trading session, not the next calendar day. "
-        "Random Walk carries forward the last adjusted close; other models estimate a "
-        "one-session log return. The median ensemble is the unweighted median of "
-        "models that successfully produced a forecast—it is not a trained or validated trading strategy."
-    )
+    with st.expander("Methodology, data and limitations"):
+        st.write(
+            "Forecast horizon is the next observed trading session, not necessarily "
+            "the next calendar day. Random Walk carries forward the last adjusted close; "
+            "other models estimate a one-session log return."
+        )
+        st.write(
+            "The median ensemble is the unweighted median of successful model forecasts. "
+            "It is not a trained or validated trading strategy. Predictions are experimental "
+            "estimates and are not trading signals."
+        )
+        st.caption(
+            f"Price convention: {payload.get('price_adjustment', 'not specified')} · "
+            "Data source availability and adjustment history may change."
+        )
 
     forecasts = payload.get("forecasts", [])
     if forecasts:
