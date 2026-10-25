@@ -172,7 +172,8 @@ p, li, label { line-height: 1.55; }
 }
 .pfl-footer-socials svg { width: 13px; height: 13px; fill: currentColor; display: block; }
 .pfl-github-float {
-  position: fixed; right: 22px; bottom: 22px; z-index: 9999;
+  /* Leave room for the hosting platform's bottom-right "Manage apps" overlay. */
+  position: fixed; right: 22px; bottom: 82px; z-index: 9999;
   display: inline-flex; align-items: center; justify-content: center;
   width: 46px; height: 46px; border-radius: 50%;
   color: #f5f8fd !important;
@@ -191,7 +192,7 @@ p, li, label { line-height: 1.55; }
 .pfl-github-float svg { display: block; width: 25px; height: 25px; fill: currentColor; }
 .pfl-github-float:focus-visible { outline: 2px solid var(--pfl-teal); outline-offset: 4px; }
 @media (max-width: 700px) {
-  .pfl-github-float { right: 14px; bottom: 14px; width: 42px; height: 42px; }
+  .pfl-github-float { right: 14px; bottom: 76px; width: 42px; height: 42px; }
   .pfl-github-float svg { width: 23px; height: 23px; }
 }
 [data-testid="stMetric"] {
