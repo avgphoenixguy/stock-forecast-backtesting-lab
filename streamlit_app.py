@@ -738,6 +738,236 @@ def show_daily_positions(
     )
 
 
+
+def show_latest_forecast(ticker: str) -> None:
+    """Display the most recent automated forecast and scored forecast history."""
+    st.title("Latest Daily Forecast")
+    st.write(
+        "Latest next-session baseline forecasts generated from the most recent "
+        "validated daily OHLC data. These are research outputs, not trading advice."
+    )
+
+    name = safe_ticker_name(ticker)
+    latest_path = REPORTS_DIR / f"latest_forecast_{name}.json"
+    history_path = REPORTS_DIR / f"daily_forecast_history_{name}.csv"
+
+    if not latest_path.exists():
+        st.warning(
+            "No automated daily forecast has been published for this ticker yet."
+        )
+        st.markdown(
+            "[Open the daily forecast workflow on GitHub]"
+            "(https://github.com/avgphoenixguy/stock-forecast-backtesting-lab/actions/workflows/daily-forecast.yml)"
+        )
+        st.write(
+            "Run the workflow manually using **Run workflow**. It will refresh "
+            "and validate daily OHLC, generate baseline forecasts, and publish "
+            "the small forecast ledger if the data is current."
+        )
+        st.caption(
+            "The app will show a new forecast only after a successful workflow run."
+        )
+        return
+
+    try:
+        payload = json.loads(latest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        st.error(f"Could not read the latest forecast file: {exc}")
+        return
+
+    if payload.get("ticker") != ticker:
+        st.warning(
+            f"This forecast file is for {payload.get('ticker')}, not {ticker}. "
+            "Choose RELIANCE.NS in the ticker selector to view the published forecast."
+        )
+        return
+
+    latest_ohlc_date = payload.get("latest_ohlc_date", "Unknown")
+    origin_date = payload.get("forecast_origin_date", "Unknown")
+    generated_at = payload.get("generated_at_utc", "Unknown")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Latest OHLC session", str(latest_ohlc_date))
+    c2.metric("Forecast origin", str(origin_date))
+    c3.metric("Forecast models", f"{len(payload.get('forecasts', []))}")
+
+    st.caption(
+        f"Forecast generated at (UTC): {generated_at} · "
+        f"Source: {payload.get('data_source', 'not specified')} · "
+        f"Price convention: {payload.get('price_adjustment', 'not specified')}"
+    )
+    st.info(
+        "The current implementation publishes Random Walk and Random Walk with "
+        "Drift baselines. The target is the next observed trading session, not "
+        "necessarily the next calendar day. A zero-return Random Walk forecast "
+        "simply carries forward the last adjusted close."
+    )
+
+    forecasts = payload.get("forecasts", [])
+    if forecasts:
+        forecast_frame = pd.DataFrame(forecasts)
+        for column in [
+            "input_close",
+            "predicted_next_log_return_bps",
+            "predicted_next_close",
+            "actual_close",
+            "absolute_close_error",
+            "absolute_return_error_bps",
+        ]:
+            if column in forecast_frame.columns:
+                forecast_frame[column] = pd.to_numeric(
+                    forecast_frame[column], errors="coerce"
+                )
+
+        model_columns = st.columns(min(3, len(forecast_frame)))
+        for idx, (_, forecast) in enumerate(forecast_frame.iterrows()):
+            with model_columns[idx % len(model_columns)]:
+                st.metric(
+                    format_model_label(str(forecast.get("model", "model"))),
+                    f"₹{float(forecast['predicted_next_close']):,.2f}",
+                    delta=(
+                        f"{float(forecast['predicted_next_log_return_bps']):+.2f} bps"
+                    ),
+                    help=(
+                        "Forecasted next-session adjusted close; the delta is the "
+                        "predicted log return in basis points."
+                    ),
+                )
+
+        display_columns = [
+            column for column in [
+                "model",
+                "input_close",
+                "predicted_next_log_return_bps",
+                "predicted_next_close",
+                "target_date",
+                "actual_close",
+                "absolute_close_error",
+            ] if column in forecast_frame.columns
+        ]
+        st.dataframe(
+            forecast_frame[display_columns].rename(columns={
+                "model": "Model",
+                "input_close": "Last adjusted close (₹)",
+                "predicted_next_log_return_bps": "Predicted log return (bps)",
+                "predicted_next_close": "Predicted next close (₹)",
+                "target_date": "Scored target date",
+                "actual_close": "Actual close (₹)",
+                "absolute_close_error": "Absolute close error (₹)",
+            }),
+            width="stretch",
+            hide_index=True,
+        )
+
+    st.caption(str(payload.get("note", "")))
+
+    st.subheader("Historical forecast log")
+    if not history_path.exists():
+        st.info("Forecast history has not been created yet.")
+        return
+
+    try:
+        history = pd.read_csv(history_path)
+    except (OSError, pd.errors.ParserError) as exc:
+        st.error(f"Could not read the forecast history: {exc}")
+        return
+
+    required = {
+        "origin_date", "target_date", "model", "input_close",
+        "predicted_next_close", "actual_close",
+        "absolute_close_error", "absolute_return_error_bps",
+    }
+    missing = sorted(required.difference(history.columns))
+    if missing:
+        st.error(f"Forecast history is missing columns: {missing}")
+        return
+
+    history["origin_date"] = pd.to_datetime(history["origin_date"], errors="coerce")
+    history["target_date"] = pd.to_datetime(history["target_date"], errors="coerce")
+    for column in [
+        "input_close", "predicted_next_close", "actual_close",
+        "absolute_close_error", "absolute_return_error_bps",
+    ]:
+        history[column] = pd.to_numeric(history[column], errors="coerce")
+
+    scored = history.dropna(subset=["target_date", "actual_close"]).copy()
+    if scored.empty:
+        st.info(
+            "The first forecast is waiting for the next completed trading session "
+            "to arrive, so there are no scored forecasts yet."
+        )
+        return
+
+    models = sorted(scored["model"].dropna().unique().tolist())
+    selected_model = st.selectbox(
+        "Model in historical chart",
+        options=models,
+        format_func=format_model_label,
+        key="daily_forecast_history_model",
+    )
+    model_history = (
+        scored.loc[scored["model"] == selected_model]
+        .sort_values("target_date")
+        .tail(120)
+    )
+
+    history_chart = model_history.melt(
+        id_vars=["target_date"],
+        value_vars=["predicted_next_close", "actual_close"],
+        var_name="series",
+        value_name="adjusted_close",
+    )
+    history_chart["series"] = history_chart["series"].map({
+        "predicted_next_close": "Forecast close",
+        "actual_close": "Actual close",
+    })
+    fig = px.line(
+        history_chart,
+        x="target_date",
+        y="adjusted_close",
+        color="series",
+        markers=True,
+        labels={
+            "target_date": "Target session",
+            "adjusted_close": "Adjusted close (₹)",
+            "series": "Series",
+        },
+        title=f"Last {len(model_history)} scored forecasts — {format_model_label(selected_model)}",
+    )
+    st.plotly_chart(fig, width="stretch")
+
+    recent_columns = [
+        column for column in [
+            "origin_date", "target_date", "model", "predicted_next_close",
+            "actual_close", "absolute_close_error",
+            "absolute_return_error_bps", "direction_correct",
+        ] if column in scored.columns
+    ]
+    recent = scored.sort_values("target_date", ascending=False).head(30)
+    st.dataframe(
+        recent[recent_columns].rename(columns={
+            "origin_date": "Forecast origin",
+            "target_date": "Target session",
+            "model": "Model",
+            "predicted_next_close": "Forecast close (₹)",
+            "actual_close": "Actual close (₹)",
+            "absolute_close_error": "Absolute close error (₹)",
+            "absolute_return_error_bps": "Absolute return error (bps)",
+            "direction_correct": "Direction correct",
+        }),
+        width="stretch",
+        hide_index=True,
+    )
+    csv_bytes = recent[recent_columns].to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "Download recent scored forecasts",
+        data=csv_bytes,
+        file_name=f"{name.lower()}_forecast_history.csv",
+        mime="text/csv",
+    )
+
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Stock Forecast & Backtesting Lab",
@@ -769,6 +999,7 @@ def main() -> None:
     page = st.sidebar.radio(
         "Navigate",
         [
+            "Latest forecast",
             "Overview",
             "Forecast comparison",
             "Strategy backtest",
@@ -845,7 +1076,9 @@ def main() -> None:
 
     st.sidebar.caption("Development cutoff: 2022-06-14")
 
-    if page == "Overview":
+    if page == "Latest forecast":
+        show_latest_forecast(ticker)
+    elif page == "Overview":
         show_overview(data, cost_bps)
     elif page == "Forecast comparison":
         show_forecast_comparison(data)
