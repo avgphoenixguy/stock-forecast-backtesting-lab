@@ -1,8 +1,9 @@
 
-"""Interactive dashboard for Stock Forecast & Backtesting Lab.
+"""PriceForecastLab: daily multi-model forecasts plus a historical research lab.
 
-Reads previously generated local experiment reports.
-No models are trained, no data is downloaded, and no trades are placed.
+Daily model fitting runs in GitHub Actions, not in the Streamlit request.
+The app displays published forecast records and historic experiment reports.
+No trades are placed.
 """
 
 from __future__ import annotations
@@ -22,6 +23,127 @@ REPORTS_DIR = PROJECT_ROOT / "dashboard" / "data"
 
 DEFAULT_TICKER = "RELIANCE.NS"
 COST_SCENARIOS = [0.0, 5.0, 10.0, 20.0]
+
+FORECAST_MODEL_LABELS = {
+    "median_ensemble": "Median ensemble",
+    "random_walk": "Random Walk baseline",
+    "drift": "Random Walk with Drift",
+    "arima_111": "ARIMA (1, 1, 1)",
+    "holt_damped": "Holt damped trend",
+    "ridge": "Ridge regression",
+    "random_forest": "Random Forest",
+    "hist_gradient_boosting": "Gradient boosting",
+    "lstm": "LSTM",
+    "gru": "GRU",
+}
+
+FORECAST_MODEL_ORDER = [
+    "median_ensemble", "random_walk", "drift", "arima_111", "holt_damped",
+    "ridge", "random_forest", "hist_gradient_boosting", "lstm", "gru",
+]
+
+APP_CSS = """
+<style>
+:root {
+  --pfl-ink: #eef4fb;
+  --pfl-muted: #95a8bf;
+  --pfl-line: rgba(148, 169, 194, 0.20);
+  --pfl-panel: rgba(18, 30, 48, 0.88);
+  --pfl-teal: #53e0c1;
+  --pfl-blue: #7ab5ff;
+}
+.stApp {
+  background:
+    radial-gradient(ellipse at 8% 0%, rgba(35, 84, 116, 0.23), transparent 34%),
+    radial-gradient(ellipse at 95% 10%, rgba(41, 100, 91, 0.15), transparent 28%),
+    #0a101a;
+  color: var(--pfl-ink);
+}
+.main .block-container {
+  max-width: 1480px;
+  padding-top: 2rem;
+  padding-bottom: 3rem;
+}
+h1, h2, h3 {
+  color: #f3f7fc;
+  letter-spacing: -0.035em;
+}
+h1 { font-weight: 780; }
+h2 { font-weight: 720; }
+p, li, label { line-height: 1.55; }
+[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #0d1725 0%, #0b121e 100%);
+  border-right: 1px solid var(--pfl-line);
+}
+[data-testid="stSidebar"] > div:first-child { padding-top: 1.3rem; }
+.pfl-sidebar-brand {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 4px 18px; border-bottom: 1px solid var(--pfl-line);
+  margin-bottom: 18px;
+}
+.pfl-logo {
+  display: flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 14px;
+  background: linear-gradient(135deg, #53e0c1, #68a7ff);
+  color: #08121c; font-size: 15px; font-weight: 900; letter-spacing: -1px;
+  box-shadow: 0 8px 24px rgba(83, 224, 193, 0.14);
+}
+.pfl-brand-name { color: #f4f8ff; font-size: 19px; font-weight: 800; letter-spacing: -0.8px; }
+.pfl-brand-accent { color: var(--pfl-teal); }
+.pfl-brand-caption { margin-top: 3px; color: var(--pfl-muted); font-size: 9px; letter-spacing: 1.5px; font-weight: 700; }
+.pfl-hero {
+  position: relative; overflow: hidden;
+  background: linear-gradient(115deg, rgba(19, 39, 59, 0.98), rgba(13, 31, 42, 0.92) 58%, rgba(21, 55, 56, 0.82));
+  border: 1px solid rgba(111, 176, 199, 0.28);
+  border-radius: 26px; padding: 30px 32px 28px; margin: 2px 0 24px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.16);
+}
+.pfl-hero:after {
+  content: ""; position: absolute; width: 300px; height: 300px; right: -110px; top: -170px;
+  border-radius: 50%; border: 1px solid rgba(83, 224, 193, 0.18);
+  box-shadow: 0 0 0 28px rgba(83, 224, 193, 0.035), 0 0 0 58px rgba(122, 181, 255, 0.025);
+}
+.pfl-kicker { color: var(--pfl-teal); font-size: 10px; font-weight: 800; letter-spacing: 2.1px; margin-bottom: 12px; }
+.pfl-hero-title { color: #f5f8fd; font-size: clamp(2.1rem, 4.8vw, 3.5rem); font-weight: 850; letter-spacing: -2.5px; line-height: 1.04; }
+.pfl-hero-title span { color: var(--pfl-teal); }
+.pfl-hero-copy { max-width: 780px; margin-top: 14px; color: #b7c9dc; font-size: 1rem; line-height: 1.65; }
+.pfl-chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 21px; }
+.pfl-chip {
+  display: inline-block; border: 1px solid rgba(174, 207, 227, 0.20);
+  background: rgba(5, 18, 29, 0.28); color: #d8e7f5;
+  padding: 6px 10px; border-radius: 999px; font-size: 11px; font-weight: 650;
+}
+.pfl-section-label { color: var(--pfl-muted); font-size: 11px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase; margin: 22px 0 10px; }
+.pfl-small-note { color: var(--pfl-muted); font-size: 12px; }
+[data-testid="stMetric"] {
+  background: linear-gradient(145deg, rgba(20, 34, 52, 0.94), rgba(14, 24, 39, 0.94));
+  border: 1px solid var(--pfl-line); padding: 16px 18px;
+  border-radius: 16px; min-height: 106px;
+}
+[data-testid="stMetricLabel"] p { color: #9fb2c9; font-weight: 650; font-size: 0.82rem; }
+[data-testid="stMetricValue"] { color: #f4f8ff; font-weight: 780; letter-spacing: -0.8px; }
+[data-testid="stMetricDelta"] { font-size: 0.78rem; }
+[data-testid="stAlert"] { border-radius: 15px; border-width: 1px; }
+[data-testid="stDataFrame"], [data-testid="stTable"] {
+  border: 1px solid var(--pfl-line); border-radius: 13px; overflow: hidden;
+}
+.stButton > button, [data-testid="stDownloadButton"] button {
+  border-radius: 12px; border: 1px solid rgba(83, 224, 193, 0.35);
+  font-weight: 700; min-height: 42px;
+}
+.stButton > button[kind="primary"] { background: var(--pfl-teal); color: #07131a; }
+.stTabs [data-baseweb="tab-list"] { gap: 7px; border-bottom: 1px solid var(--pfl-line); }
+.stTabs [data-baseweb="tab"] { background: rgba(19, 31, 48, 0.65); border-radius: 10px 10px 0 0; padding: 10px 14px; }
+.stTabs [aria-selected="true"] { border-bottom: 2px solid var(--pfl-teal) !important; color: var(--pfl-teal) !important; }
+hr { border-color: var(--pfl-line); }
+@media (max-width: 700px) {
+  .main .block-container { padding: 1rem 0.8rem 2rem; }
+  .pfl-hero { padding: 23px 20px; border-radius: 20px; }
+  .pfl-hero-title { letter-spacing: -1.5px; }
+}
+</style>
+"""
+
 
 STRATEGY_LABELS = {
     "random_walk": "Random Walk signal",
@@ -741,10 +863,29 @@ def show_daily_positions(
 
 def show_latest_forecast(ticker: str) -> None:
     """Display the most recent automated forecast and scored forecast history."""
-    st.title("Latest Daily Forecast")
-    st.write(
-        "Latest next-session baseline forecasts generated from the most recent "
-        "validated daily OHLC data. These are research outputs, not trading advice."
+    st.markdown(
+        """
+        <section class="pfl-hero">
+          <div class="pfl-kicker">DAILY QUANTITATIVE RESEARCH · NSE EQUITIES</div>
+          <div class="pfl-hero-title">PriceForecast<span>Lab</span></div>
+          <div class="pfl-hero-copy">
+            A transparent forecast board combining econometric baselines, machine-learning
+            models and recurrent networks. Track the latest estimates, then measure them
+            against the next completed session.
+          </div>
+          <div class="pfl-chip-row">
+            <span class="pfl-chip">End-of-day adjusted OHLC</span>
+            <span class="pfl-chip">Multi-model forecasts</span>
+            <span class="pfl-chip">Forecasts are scored after the next session</span>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.subheader("Next-session forecast")
+    st.caption(
+        "These are experimental price estimates—not trading signals. "
+        "Models can disagree or fail, and no model has established a reliable economic edge."
     )
 
     name = safe_ticker_name(ticker)
@@ -760,9 +901,10 @@ def show_latest_forecast(ticker: str) -> None:
             "(https://github.com/avgphoenixguy/stock-forecast-backtesting-lab/actions/workflows/daily-forecast.yml)"
         )
         st.write(
-            "Run the workflow manually using **Run workflow**. It will refresh "
-            "and validate daily OHLC, generate baseline forecasts, and publish "
-            "the small forecast ledger if the data is current."
+            "Run the scheduled multi-model workflow manually using **Run workflow**. "
+            "It refreshes and validates daily OHLC, attempts the configured model suite, "
+            "and publishes the latest successful forecasts. If the run fails, open the "
+            "workflow log before trusting any previously displayed forecast."
         )
         st.caption(
             "The app will show a new forecast only after a successful workflow run."
@@ -797,10 +939,10 @@ def show_latest_forecast(ticker: str) -> None:
         f"Price convention: {payload.get('price_adjustment', 'not specified')}"
     )
     st.info(
-        "The current implementation publishes Random Walk and Random Walk with "
-        "Drift baselines. The target is the next observed trading session, not "
-        "necessarily the next calendar day. A zero-return Random Walk forecast "
-        "simply carries forward the last adjusted close."
+        "Forecast horizon: the next observed trading session, not the next calendar day. "
+        "Random Walk carries forward the last adjusted close; other models estimate a "
+        "one-session log return. The median ensemble is the unweighted median of "
+        "models that successfully produced a forecast—it is not a trained or validated trading strategy."
     )
 
     forecasts = payload.get("forecasts", [])
@@ -819,45 +961,117 @@ def show_latest_forecast(ticker: str) -> None:
                     forecast_frame[column], errors="coerce"
                 )
 
-        model_columns = st.columns(min(3, len(forecast_frame)))
-        for idx, (_, forecast) in enumerate(forecast_frame.iterrows()):
-            with model_columns[idx % len(model_columns)]:
-                st.metric(
-                    format_model_label(str(forecast.get("model", "model"))),
-                    f"₹{float(forecast['predicted_next_close']):,.2f}",
-                    delta=(
-                        f"{float(forecast['predicted_next_log_return_bps']):+.2f} bps"
-                    ),
-                    help=(
-                        "Forecasted next-session adjusted close; the delta is the "
-                        "predicted log return in basis points."
-                    ),
-                )
+        forecast_frame["model_label"] = forecast_frame["model"].map(
+            lambda model: FORECAST_MODEL_LABELS.get(str(model), format_model_label(str(model)))
+        )
+        forecast_frame["predicted_return_pct"] = (
+            forecast_frame["predicted_next_log_return_bps"] / 100.0
+        )
+        forecast_frame["_model_order"] = forecast_frame["model"].map(
+            {model: idx for idx, model in enumerate(FORECAST_MODEL_ORDER)}
+        ).fillna(999)
+        forecast_frame = forecast_frame.sort_values(
+            ["_model_order", "model"]
+        ).reset_index(drop=True)
 
-        display_columns = [
-            column for column in [
-                "model",
+        first_forecast = forecast_frame.iloc[0]
+        latest_close = float(forecast_frame["input_close"].dropna().iloc[0])
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Last adjusted close", f"₹{latest_close:,.2f}")
+        c2.metric("Latest OHLC session", str(latest_ohlc_date))
+        c3.metric("Successful forecasts", f"{len(forecast_frame)}")
+
+        st.markdown('<div class="pfl-section-label">Model forecast board</div>', unsafe_allow_html=True)
+        for offset in range(0, len(forecast_frame), 3):
+            model_columns = st.columns(3)
+            batch = forecast_frame.iloc[offset : offset + 3]
+            for column, (_, forecast) in zip(model_columns, batch.iterrows()):
+                with column:
+                    st.metric(
+                        str(forecast["model_label"]),
+                        f"₹{float(forecast['predicted_next_close']):,.2f}",
+                    )
+                    st.caption(
+                        f"Implied log return: "
+                        f"{float(forecast['predicted_next_log_return_bps']):+.2f} bps"
+                    )
+
+        st.markdown('<div class="pfl-section-label">Forecast disagreement</div>', unsafe_allow_html=True)
+        plot_data = forecast_frame.sort_values("predicted_return_pct", ascending=True)
+        fig = px.bar(
+            plot_data,
+            x="predicted_return_pct",
+            y="model_label",
+            color="model_label",
+            orientation="h",
+            labels={
+                "predicted_return_pct": "Predicted log return (%)",
+                "model_label": "Model",
+                "color": "Model",
+            },
+            title="Predicted return by model",
+            hover_data={
+                "predicted_next_close": ":.2f",
+                "predicted_next_log_return_bps": ":.2f",
+                "predicted_return_pct": ":.4f",
+            },
+        )
+        fig.add_vline(x=0.0, line_dash="dash", line_color="#94a8bf")
+        fig.update_layout(
+            showlegend=False,
+            height=max(280, 42 * len(plot_data)),
+            margin=dict(l=12, r=20, t=60, b=20),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+        display_frame = forecast_frame[
+            [
+                "model_label",
                 "input_close",
                 "predicted_next_log_return_bps",
                 "predicted_next_close",
                 "target_date",
                 "actual_close",
                 "absolute_close_error",
-            ] if column in forecast_frame.columns
-        ]
-        st.dataframe(
-            forecast_frame[display_columns].rename(columns={
-                "model": "Model",
-                "input_close": "Last adjusted close (₹)",
-                "predicted_next_log_return_bps": "Predicted log return (bps)",
-                "predicted_next_close": "Predicted next close (₹)",
-                "target_date": "Scored target date",
-                "actual_close": "Actual close (₹)",
-                "absolute_close_error": "Absolute close error (₹)",
-            }),
-            width="stretch",
-            hide_index=True,
+            ]
+        ].rename(columns={
+            "model_label": "Model",
+            "input_close": "Last adjusted close (₹)",
+            "predicted_next_log_return_bps": "Predicted log return (bps)",
+            "predicted_next_close": "Predicted next close (₹)",
+            "target_date": "Scored target date",
+            "actual_close": "Actual close (₹)",
+            "absolute_close_error": "Absolute close error (₹)",
+        })
+        display_frame["Scored target date"] = (
+            display_frame["Scored target date"].fillna("Pending next session")
         )
+        st.dataframe(display_frame, width="stretch", hide_index=True)
+    else:
+        st.warning("No model forecast rows were published for this date.")
+
+    failures = payload.get("model_failures", [])
+    attempted = payload.get("models_attempted", [])
+    with st.expander(f"Model diagnostics · {len(failures)} unavailable in latest run"):
+        if attempted:
+            labels = [FORECAST_MODEL_LABELS.get(str(model), str(model)) for model in attempted]
+            st.caption("Models attempted: " + ", ".join(labels))
+        if failures:
+            diagnostic_frame = pd.DataFrame(failures).rename(
+                columns={"model": "Model", "error": "Reason"}
+            )
+            diagnostic_frame["Model"] = diagnostic_frame["Model"].map(
+                lambda model: FORECAST_MODEL_LABELS.get(str(model), str(model))
+            )
+            st.dataframe(diagnostic_frame, width="stretch", hide_index=True)
+            st.caption(
+                "A failure for one model does not necessarily invalidate other forecasts. "
+                "Check the GitHub Actions log for full details."
+            )
+        else:
+            st.success("All attempted models completed without a recorded exception.")
 
     st.caption(str(payload.get("note", "")))
 
@@ -969,54 +1183,74 @@ def show_latest_forecast(ticker: str) -> None:
 
 
 def main() -> None:
+    """Render the product-facing forecast page and the separate research workspace."""
     st.set_page_config(
-        page_title="PriceForecastLab | Stock Forecast & Backtesting Lab",
+        page_title="PriceForecastLab | Daily Stock Forecasts",
         page_icon="📈",
         layout="wide",
+        initial_sidebar_state="expanded",
     )
+    st.markdown(APP_CSS, unsafe_allow_html=True)
 
-    st.sidebar.title("PriceForecastLab")
-    st.sidebar.caption("Reliance Industries · RELIANCE.NS")
-
-    ticker = st.sidebar.text_input(
-        "Ticker",
-        value=DEFAULT_TICKER,
-        help=(
-            "Change this only if you have generated matching reports "
-            "for another ticker."
-        ),
-    ).strip().upper()
-
-    if not ticker:
-        st.error("Please enter a ticker.")
-        st.stop()
-
-    name = safe_ticker_name(ticker)
-
-    st.sidebar.caption("Bundled research results are read from dashboard/data/.")
+    st.sidebar.markdown(
+        """
+        <div class="pfl-sidebar-brand">
+          <div class="pfl-logo">PF</div>
+          <div>
+            <div class="pfl-brand-name">PriceForecast<span class="pfl-brand-accent">Lab</span></div>
+            <div class="pfl-brand-caption">QUANTITATIVE RESEARCH</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.sidebar.markdown("**TRACKED INSTRUMENT**")
+    st.sidebar.markdown("Reliance Industries")
+    st.sidebar.caption("NSE · RELIANCE.NS · Daily adjusted OHLC")
     st.sidebar.divider()
 
-    page = st.sidebar.radio(
-        "Navigate",
-        [
-            "Latest forecast",
-            "Overview",
-            "Forecast comparison",
-            "Strategy backtest",
-            "Daily positions",
-        ],
+    workspace = st.sidebar.radio(
+        "Workspace",
+        ["Price Forecast", "Research Lab"],
+        index=0,
+        help=(
+            "Price Forecast is the public product view. Research Lab contains "
+            "the fixed historical model comparisons and backtest tools."
+        ),
     )
 
+    st.sidebar.divider()
+    st.sidebar.caption(
+        "Daily data and forecast updates are produced by GitHub Actions. "
+        "This app displays published outputs; it does not place trades."
+    )
+
+    if workspace == "Price Forecast":
+        show_latest_forecast(DEFAULT_TICKER)
+        st.markdown(
+            '<div class="pfl-small-note">Educational research only · '
+            'Historical results do not establish future performance.</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    st.title("Research Lab")
+    st.caption(
+        "Historical experiments and diagnostics. The documented comparison "
+        "period ends June 14, 2022; these tables are not a live forecast feed."
+    )
     cost_bps = st.sidebar.selectbox(
         "Assumed cost per side (bps)",
         options=COST_SCENARIOS,
         index=2,
         help=(
-            "Scenario assumption for cost and slippage per side. "
-            "20 bps round trip at the default 10 bps."
+            "Illustrative transaction-cost and slippage assumption. "
+            "At 10 bps per side, the intraday round trip is modelled as 20 bps."
         ),
     )
 
+    ticker = DEFAULT_TICKER
+    name = safe_ticker_name(ticker)
     reports = {
         "model_comparison_overall": (
             REPORTS_DIR / f"model_comparison_overall_{name}.csv"
@@ -1031,64 +1265,47 @@ def main() -> None:
             REPORTS_DIR / f"strategy_cost_sensitivity_{name}.csv"
         ),
     }
-
     missing = [
         str(path.relative_to(PROJECT_ROOT))
         for path in reports.values()
         if not path.exists()
     ]
-
     if missing:
-        st.title("Stock Forecast & Backtesting Lab")
         st.warning(
-            "Some generated experiment reports are missing. This dashboard "
-            "reads local output files and does not train or download data."
+            "The historical research snapshot is incomplete. The live daily "
+            "forecast page can still work independently."
         )
-
         st.write("Missing report files:")
-        for path in missing:
-            st.code(path)
-
-        st.subheader("Generate the reports first")
-
-        st.code(
-            "./.venv/bin/python scripts/compare_model_results.py "
-            "--ticker RELIANCE.NS --end 2022-06-14\n\n"
-            "./.venv/bin/python scripts/run_strategy_backtest.py "
-            "--ticker RELIANCE.NS --end 2022-06-14 --cost-bps 10\n\n"
-            "./.venv/bin/python scripts/evaluate_strategy_backtest.py "
-            "--ticker RELIANCE.NS --end 2022-06-14",
-            language="bash",
-        )
-
-        st.caption(
-            "Generated reports are ignored by Git. A fresh clone or a "
-            "hosted deployment will need a deliberate report-generation "
-            "or curated public snapshot setup."
-        )
+        for report in missing:
+            st.code(report)
         st.stop()
 
     try:
         data = load_all_reports(ticker)
     except (ValueError, FileNotFoundError, KeyError) as exc:
-        st.error(f"Could not load the research reports: {exc}")
+        st.error(f"Could not load the historical research reports: {exc}")
         st.stop()
 
-    st.sidebar.caption("Development cutoff: 2022-06-14")
-
-    if page == "Latest forecast":
-        show_latest_forecast(ticker)
-    elif page == "Overview":
+    st.caption(
+        "Data: RELIANCE.NS · Development cutoff: 2022-06-14 · "
+        f"Selected cost scenario: {cost_bps:g} bps per side"
+    )
+    research_tabs = st.tabs(
+        ["Overview", "Model comparison", "Strategy backtest", "Daily decisions"]
+    )
+    with research_tabs[0]:
         show_overview(data, cost_bps)
-    elif page == "Forecast comparison":
+    with research_tabs[1]:
         show_forecast_comparison(data)
-    elif page == "Strategy backtest":
-        st.title("Strategy Backtest")
-
+    with research_tabs[2]:
+        st.subheader("Historical strategy backtest")
+        st.caption(
+            "Exploratory long-or-cash intraday strategy. Benchmark exposures differ, "
+            "and the cost model is illustrative rather than broker-verified."
+        )
         available_models = (
             data["daily"]["model"].dropna().unique().tolist()
         )
-
         model_defaults = [
             model for model in STRATEGIES_FOR_CURVE
             if model in available_models
@@ -1096,26 +1313,24 @@ def main() -> None:
         default_models = model_defaults + (
             ["buy_and_hold"] if "buy_and_hold" not in available_models else []
         )
-
         selected_models = st.multiselect(
-            "Strategies shown in charts",
+            "Strategies shown",
             options=sorted(set(available_models + ["buy_and_hold"])),
             default=default_models,
             format_func=format_model_label,
         )
-
         show_strategy_backtest(
             data=data,
             cost_bps=cost_bps,
             selected_models=selected_models,
         )
-    elif page == "Daily positions":
+    with research_tabs[3]:
         show_daily_positions(data, cost_bps)
 
-    st.sidebar.divider()
-    st.sidebar.caption(
-        "Educational research only. Historical results are not evidence "
-        "of future performance or financial advice."
+    st.markdown(
+        '<div class="pfl-small-note">Research workbench · '
+        'Not investment advice, not a live execution system.</div>',
+        unsafe_allow_html=True,
     )
 
 
