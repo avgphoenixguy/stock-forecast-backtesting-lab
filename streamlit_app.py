@@ -1020,10 +1020,11 @@ def fetch_ticker_history(ticker: str) -> pd.DataFrame:
         .drop_duplicates("date", keep="last")
         .reset_index(drop=True)
     )
-    if len(data) < 756:
+    if len(data) < 252:
         raise ValueError(
             f"Only {len(data)} valid daily sessions were returned for {ticker}; "
-            "at least 756 are required for the current forecast models."
+            "at least 252 are required for an on-demand preview. Recently listed stocks "
+            "with shorter price history are searchable but cannot be forecast by this version."
         )
 
     prices = data[["open", "high", "low", "close"]].to_numpy(dtype=float)
@@ -1061,6 +1062,7 @@ def generate_on_demand_forecast(ticker: str) -> tuple[dict[str, object], pd.Data
         generated_at_utc=generated_at,
         research_start="2005-01-01",
         include_deep_learning=False,
+        min_observations=252,
     )
     failures = forecast_rows.attrs.get("model_failures", [])
     attempted = forecast_rows.attrs.get("models_attempted", [])
@@ -1098,7 +1100,9 @@ def generate_on_demand_forecast(ticker: str) -> tuple[dict[str, object], pd.Data
         "note": (
             "On-demand research preview. These estimates are not yet part of the "
             "persistent daily tracking ledger. Deep-learning models are only included "
-            "in scheduled forecasts where the dedicated forecast runner is configured for them."
+            "in scheduled forecasts where the dedicated forecast runner is configured for them. "
+            "For stocks with 252–755 sessions, simpler baselines may be available while "
+            "ML models report insufficient training history."
         ),
     }
     snapshot = build_price_history_snapshot(data)
