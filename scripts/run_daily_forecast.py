@@ -31,6 +31,8 @@ MAX_SUPERVISED_ROWS = 2520
 MAX_ECONOMETRIC_ROWS = 1500
 SEQUENCE_LENGTH = 30
 MAX_SEQUENCE_ROWS = 1260
+PRICE_HISTORY_OBSERVATIONS = 1260
+PRICE_HISTORY_COLUMNS = ["date", "open", "high", "low", "close", "volume"]
 
 HISTORY_COLUMNS = [
     "ticker", "origin_date", "generated_at_utc", "model", "input_close",
@@ -118,6 +120,37 @@ def load_validated_data(ticker: str) -> pd.DataFrame:
     if invalid.any():
         raise ValueError(f"Found {int(invalid.sum())} invalid OHLC rows.")
     return data.reset_index(drop=True)
+
+
+def build_price_history_snapshot(
+    data: pd.DataFrame,
+    observations: int = PRICE_HISTORY_OBSERVATIONS,
+) -> pd.DataFrame:
+    """Return a compact, validated recent adjusted-OHLC snapshot for the UI."""
+    if observations < 1:
+        raise ValueError("observations must be at least 1.")
+
+    missing = [column for column in PRICE_HISTORY_COLUMNS if column not in data.columns]
+    if missing:
+        raise ValueError(f"OHLC history is missing columns: {missing}")
+
+    snapshot = data[PRICE_HISTORY_COLUMNS].copy()
+    snapshot["date"] = pd.to_datetime(snapshot["date"], errors="coerce").dt.normalize()
+    if snapshot["date"].isna().any():
+        raise ValueError("OHLC history contains invalid dates.")
+    if snapshot["date"].duplicated().any():
+        raise ValueError("OHLC history contains duplicate dates.")
+
+    for column in PRICE_HISTORY_COLUMNS[1:]:
+        snapshot[column] = pd.to_numeric(snapshot[column], errors="coerce")
+
+    values = snapshot[PRICE_HISTORY_COLUMNS[1:]].to_numpy(dtype=float)
+    if not np.isfinite(values).all():
+        raise ValueError("OHLC history contains missing or non-finite values.")
+
+    snapshot = snapshot.sort_values("date").tail(observations).reset_index(drop=True)
+    snapshot["date"] = snapshot["date"].dt.strftime("%Y-%m-%d")
+    return snapshot[PRICE_HISTORY_COLUMNS]
 
 
 def build_ml_features(data: pd.DataFrame) -> pd.DataFrame:
@@ -692,6 +725,7 @@ def main() -> None:
     DASHBOARD_DATA_DIR.mkdir(parents=True, exist_ok=True)
     history_path = DASHBOARD_DATA_DIR / f"daily_forecast_history_{name}.csv"
     latest_path = DASHBOARD_DATA_DIR / f"latest_forecast_{name}.json"
+    price_history_path = DASHBOARD_DATA_DIR / f"price_history_{name}.csv"
     history = load_history(history_path)
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     updated_history = update_forecast_history(
@@ -716,6 +750,13 @@ def main() -> None:
     history_temporary.replace(history_path)
     write_json_atomic(latest_path, latest_payload)
 
+    price_snapshot = build_price_history_snapshot(data)
+    price_history_temporary = price_history_path.with_suffix(
+        price_history_path.suffix + ".tmp"
+    )
+    price_snapshot.to_csv(price_history_temporary, index=False)
+    price_history_temporary.replace(price_history_path)
+
     latest_rows = updated_history.loc[
         updated_history["origin_date"] == latest_payload["forecast_origin_date"]
     ]
@@ -731,6 +772,10 @@ def main() -> None:
     print(f"New-origin records: {int((updated_history['origin_date'] == latest_date_text).sum())}")
     print(f"History CSV: {history_path.relative_to(PROJECT_ROOT)}")
     print(f"Latest forecast JSON: {latest_path.relative_to(PROJECT_ROOT)}")
+    print(
+        f"Price-history snapshot ({len(price_snapshot):,} sessions): "
+        f"{price_history_path.relative_to(PROJECT_ROOT)}"
+    )
     print(latest_rows[[
         "model", "input_close", "predicted_next_log_return_bps",
         "predicted_next_close", "target_date", "absolute_close_error",
