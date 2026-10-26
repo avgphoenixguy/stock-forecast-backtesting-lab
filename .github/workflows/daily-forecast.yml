@@ -11,8 +11,8 @@ on:
       - "requirements.txt"
       - "requirements-forecast.txt"
   schedule:
-    # 20:00 India Standard Time, weekdays, after the regular cash-market close.
-    - cron: "30 14 * * 1-5"
+    # 20:45 India Standard Time, weekdays, offset from common GitHub cron peak times.
+    - cron: "15 15 * * 1-5"
   workflow_dispatch:
 
 permissions:
