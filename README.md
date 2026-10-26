@@ -24,7 +24,7 @@ The current searchable directory is published at [`dashboard/data/nifty500_unive
 
 ## Automated Daily Forecasts
 
-A GitHub Actions workflow is configured in `.github/workflows/daily-forecast.yml`. It is scheduled for weekdays at approximately **8:00 PM India Standard Time** and can also be started manually from the repository's **Actions** tab.
+A GitHub Actions workflow is configured in `.github/workflows/daily-forecast.yml`. It is scheduled for weekdays at approximately **8:45 PM India Standard Time** and can also be started manually from the repository's **Actions** tab. The hosted app displays the latest successfully published snapshot rather than fetching or recalculating prices on every page load. Scheduled workflows can occasionally be delayed or skipped by GitHub, and a data provider may not have published a new daily candle yet; check the Actions run history if the displayed data session is unexpectedly old.
 
 On a successful run, the workflow:
 
